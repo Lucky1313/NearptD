@@ -87,24 +87,9 @@ int main(const int argc, const char **const argv) {
 
   const double time_init = Print_Time("Initialization and reading fixed points");
 
-  /*
-  #ifdef DEBUG
-  cout << "Read fixed points, raw vector: [";
-  thrust::copy(pts.begin(), pts.end(), ostream_iterator<Coord_T>(cout, ", "));
-  cout << "]" << endl;
-  #endif
-  */
   // Structure of arrays rather than Array of structures, thrust good practice
   // Contains 3 device vectors, one for x, y, z
-  nearpt3::Points_T<Coord_T> *p  = new nearpt3::Points_T<Coord_T>(nfixpts, pts);
-
-  #ifdef DEBUG
-  //cout << "Point structure: [";
-  //typedef thrust::tuple<Coord_T, Coord_T, Coord_T> Coord3;
-  //thrust::copy(p->begin(), p->end(), ostream_iterator<Coord_T>(cout, " "));
-  //cout << "]" << endl;
-  #endif
- 
+  nearpt3::Points_T<Coord_T> *p  = new nearpt3::Points_T<Coord_T>(nfixpts, pts); 
 
   //Timing
 
@@ -125,12 +110,16 @@ int main(const int argc, const char **const argv) {
 
   int nqpts = 0;
 
-  array<Coord_T,3> q;
+  array<Coord_T,3> q, pt;
   while (qstream.read(reinterpret_cast<char*>(&q), 3*sizeof(Coord_T))) {
     nqpts++;
     int closestpt = nearpt3::Query(g, q);
     pstream.write(reinterpret_cast<char*>(&q), psize);
-    pstream.write(reinterpret_cast<char*>(&p[closestpt]), psize);
+    pt[0] = pts[closestpt*3];
+    pt[1] = pts[closestpt*3+1];
+    pt[2] = pts[closestpt*3+2];
+    pstream.write(reinterpret_cast<char*>(&pt), psize);
+    cout << "\nPair: " << PRINTC(q) << PRINTN(pt);
   }
 
   const double time_query = Print_Time("Querying points");
