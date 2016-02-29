@@ -29,8 +29,6 @@
 using namespace std;
 using boost::array;
 
-#define DEBUG
-
 namespace nearpt3 {
 	double ng_factor = 1.6;
 
@@ -43,13 +41,6 @@ namespace nearpt3 {
   // Number of cells in cellsearchorder (before expanding symmetries).
   const static int ncellsearchorder = 
     sizeof(nearpt3::cellsearchorder) / sizeof(nearpt3::cellsearchorder[0][0])/4;
-
-  
-
-  void write(ostream &o, const Cell3& c) {
-    o << '(' << c[0] << ',' << c[1] << ',' << c[2] << ") ";
-  }
-  
 
   template<typename Coord_T> Grid_T<Coord_T>*
   Preprocess(const int nfixpts, Points_T<Coord_T>* pts) {

@@ -1,4 +1,5 @@
 #include <boost/multi_array.hpp>
+#include <iostream>
 
 using boost::array;
 
@@ -43,4 +44,7 @@ namespace nearpt3 {
     //    const Cell3 operator*(const int *) const;
   };
 
+  void write(std::ostream &o, const Cell3& c) {
+    o << '(' << c[0] << ',' << c[1] << ',' << c[2] << ") ";
+  }
 };
