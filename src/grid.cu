@@ -47,12 +47,6 @@ namespace nearpt3 {
 
   template<typename Coord_T>
   class Grid_T {
-    typedef thrust::tuple<Coord_T, Coord_T, Coord_T> Coord3;
-
-    typedef thrust::device_vector<Coord_T> Coord_Vector;
-    typedef typename Coord_Vector::iterator Coord_Iterator;
-    typedef thrust::tuple<Coord_Iterator, Coord_Iterator, Coord_Iterator> Coord_Iterator_Tuple;
-    typedef thrust::zip_iterator<Coord_Iterator_Tuple> Coord_3_Iterator;
 
   public:
     int ng;
@@ -60,10 +54,15 @@ namespace nearpt3 {
     double r_cell;
     array<double,3> d_cell;
     int nfixpts;
-    Points_T<Coord_T>* pts;
+    Points_Vector<Coord_T>* pts;
     thrust::device_vector<int> cells;
     thrust::device_vector<int> base;
+    thrust::device_vector<int> cell_indices;
 
+    // Typedefs from Point_Vector class
+    typedef typename Points_Vector<Coord_T>::Coord_Tuple Coord_Tuple;
+    typedef typename Points_Vector<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
+    
     // Check if this is a legal cell.
     bool check(const Cell3 a) const {
       if (a[0] < 0 || a[0] >= ng ) return false;
@@ -98,7 +97,7 @@ namespace nearpt3 {
     }
     
     int point_to_id(const int& n) {
-      Coord_3_Iterator p = pts->begin();
+      Coord_Iterator_Tuple p = pts->begin();
       int ix = static_cast<short int>(static_cast<double>(thrust::get<0>(p[n]))*r_cell+d_cell[0]);
       int iy = static_cast<short int>(static_cast<double>(thrust::get<1>(p[n]))*r_cell+d_cell[1]);
       int iz = static_cast<short int>(static_cast<double>(thrust::get<2>(p[n]))*r_cell+d_cell[2]);
@@ -136,13 +135,12 @@ namespace nearpt3 {
         return;
       }
       typedef thrust::device_vector<int>::iterator IntItr;
-      typedef thrust::permutation_iterator<Coord_3_Iterator, IntItr> PermItr;
-      typedef thrust::transform_iterator<distance2_functor<Coord3>, PermItr> dist2_itr;
+      typedef thrust::permutation_iterator<Coord_Iterator_Tuple, IntItr> PermItr;
+      typedef thrust::transform_iterator<distance2_functor<Coord_Tuple>, PermItr> dist2_itr;
       PermItr ptsbegin(pts->begin(), cells.begin());
-      dist2_itr begin(ptsbegin + base[queryint],
-                      distance2_functor<Coord3>(q[0], q[1], q[2]));
-      dist2_itr end(ptsbegin + base[queryint+1] - 1,
-                    distance2_functor<Coord3>(q[0], q[1], q[2]));
+      distance2_functor<Coord_Tuple> distance2(q[0], q[1], q[2]);
+      dist2_itr begin(ptsbegin + base[queryint], distance2);
+      dist2_itr end(ptsbegin + base[queryint+1] - 1, distance2);
       dist2_itr result = thrust::min_element(begin, end);
       closestpt = cells[result - begin + base[queryint]];
       dist2 = *result;
@@ -153,49 +151,49 @@ namespace nearpt3 {
       const int queryint(qpoint_to_id(q));
       const int npitc(num_points_id(queryint));
 
-#ifdef DEBUG
-      cout << PRINTC(q[0]) << PRINTC(q[1]) << PRINTN(q[2]);
-      cout << PRINTC(queryint) << PRINTN(npitc);
-      cout << PRINTC(base[queryint]) << PRINTN(base[queryint+1]);
-#endif
+// #ifdef DEBUG
+//       cout << PRINTC(q[0]) << PRINTC(q[1]) << PRINTN(q[2]);
+//       cout << PRINTC(queryint) << PRINTN(npitc);
+//       cout << PRINTC(base[queryint]) << PRINTN(base[queryint+1]);
+// #endif
       
       if (npitc<=0) return -1; // No points in this cell
 
       int closestpt = -1;
 
+      // Functor for distance from a point to the query point
+      distance2_functor<Coord_Tuple> distance2(q[0], q[1], q[2]);
+
       // Thrust iterator black magic
       typedef thrust::device_vector<int>::iterator IntItr;
-      typedef thrust::permutation_iterator<Coord_3_Iterator, IntItr> PermItr;
-      typedef thrust::transform_iterator<distance2_functor<Coord3>, PermItr> dist2_itr;
+      typedef thrust::permutation_iterator<Coord_Iterator_Tuple, IntItr> PermItr;
+      typedef thrust::transform_iterator<distance2_functor<Coord_Tuple>, PermItr> dist2_itr;
       PermItr ptsbegin(pts->begin(), cells.begin());
-      dist2_itr begin(ptsbegin + base[queryint],
-                      distance2_functor<Coord3>(q[0], q[1], q[2]));
-      dist2_itr end(ptsbegin + base[queryint+1] - 1,
-                    distance2_functor<Coord3>(q[0], q[1], q[2]));
-      
-      Coord_3_Iterator i(pts->begin());
-      i += cells[base[queryint]];
-      Coord_T x = thrust::get<0>(*i);
-      Coord_T y = thrust::get<1>(*i);
-      Coord_T z = thrust::get<2>(*i);
-#ifdef DEBUG
-      cout << PRINTC(cells[base[queryint]]) << PRINTN(cells[base[queryint+1]-1]);
-      cout << PRINTC(*begin) << PRINTN(*end);
-      cout << PRINTC(x) << PRINTC(y) << PRINTN(z);
-#endif
+      dist2_itr begin(ptsbegin + base[queryint], distance2);
+      dist2_itr end(ptsbegin + base[queryint+1] - 1, distance2);
+
+// #ifdef DEBUG
+//       Coord_Iterator_Tuple i(pts->begin());
+//       i += cells[base[queryint]];
+//       Coord_T x = thrust::get<0>(*i);
+//       Coord_T y = thrust::get<1>(*i);
+//       Coord_T z = thrust::get<2>(*i);
+//       cout << PRINTC(cells[base[queryint]]) << PRINTN(cells[base[queryint+1]-1]);
+//       cout << PRINTC(*begin) << PRINTN(*end);
+//       cout << PRINTC(x) << PRINTC(y) << PRINTN(z);
+// #endif
       
       dist2_itr result = thrust::min_element(begin, end);
       double dist2 = *result;
 
       closestpt = cells[result - begin + base[queryint]];
-      //closestpt = cells[result - begin];
       
       const double distf = sqrt(dist2) * 1.00001;
 
-#ifdef DEBUG
-      cout << PRINTC(closestpt) << PRINTC(end - begin) <<  PRINTC(result - begin) <<
-        PRINTC(result - begin + base[queryint]) << PRINTC(*result) << PRINTN(distf);
-#endif
+// #ifdef DEBUG
+//       cout << PRINTC(closestpt) << PRINTC(end - begin) <<  PRINTC(result - begin) <<
+//         PRINTC(result - begin + base[queryint]) << PRINTC(*result) << PRINTN(distf);
+// #endif
 
       array<Coord_T, 3> lopt, hipt;
       for (int i=0; i<3; ++i) {
@@ -209,10 +207,8 @@ namespace nearpt3 {
       clip(locell);
       clip(hicell);
 
-      cout << PRINTC(lopt) << PRINTN(hipt);
       Cell3 qcell(Compute_Cell_Containing_Point(q));
       if (locell == qcell && hicell == qcell) return closestpt;
-
       
       for (Coord_T x=locell[0]; x<=hicell[0]; x++) {
         for (Coord_T y=locell[1]; y<=hicell[1]; y++) {
@@ -220,33 +216,21 @@ namespace nearpt3 {
           const int i01 = (static_cast<int>(x)*ng + static_cast<int>(y))*ng;
           const int i0 = i01 + locell[2];
           const int i1 = i01 + hicell[2];
-#ifdef DEBUG
-          cout << PRINTC(x) << PRINTC(y) << PRINTC(i01) <<
-            PRINTC(i0) << PRINTC(i1) << PRINTC(base[i0]) << PRINTN(base[i1+1]);
-#endif
+// #ifdef DEBUG
+//           cout << PRINTC(x) << PRINTC(y) << PRINTC(i01) <<
+//             PRINTC(i0) << PRINTC(i1) << PRINTC(base[i0]) << PRINTN(base[i1+1]);
+// #endif
 
-          dist2_itr b(ptsbegin + base[i0],
-                      distance2_functor<Coord3>(q[0], q[1], q[2]));
-          cout << "A" << endl;
-          dist2_itr e(ptsbegin + base[i1+1] - 1,
-                      distance2_functor<Coord3>(q[0], q[1], q[2]));
-          cout << "B" << endl;
-          cout << PRINTC(*b) << PRINTN(*e);
+          dist2_itr b(ptsbegin + base[i0], distance2);
+          dist2_itr e(ptsbegin + base[i1+1] - 1, distance2);
           dist2_itr r = thrust::min_element(b, e);
           double d2 = *r;
-          cout << PRINTC(base[i1+1]-1) << PRINTC(d2) << PRINTC(r - b) << PRINTC(e - b) << PRINTN(r - b + base[i0]);
           if (d2 < dist2 || (d2==dist2 && cells[r - b + base[i0]]<closestpt)) {
-            cout << "C" << endl;
             dist2 = d2;
             closestpt = cells[r - b + base[i0]];
-            cout << PRINTC(d2) << PRINTC(r - b + base[i0]) << PRINTN(cells[r - b + base[i0]]);
-            cout << "D" << endl;
           }
         }
       }
-
-      cout << PRINTC(closestpt) << PRINTN(dist2);
-      cout << endl;
     
       return closestpt;
     }

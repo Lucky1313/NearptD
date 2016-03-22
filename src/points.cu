@@ -11,18 +11,16 @@ using boost::array;
 namespace nearpt3 {
 
   template<typename Coord_T>
-  class Points_T {
+  class Points_Vector {
+  public:
     // Convenience Typedefs
+    typedef thrust::tuple<Coord_T, Coord_T, Coord_T> Coord_Tuple;
     typedef thrust::device_vector<Coord_T> Coord_Vector;
     typedef typename Coord_Vector::iterator Coord_Iterator;
-    typedef thrust::tuple<Coord_Iterator, Coord_Iterator, Coord_Iterator> Coord_Iterator_Tuple;
-    typedef thrust::zip_iterator<Coord_Iterator_Tuple> Coord_3_Iterator;
     typedef thrust::pair<Coord_Iterator, Coord_Iterator> Coord_Iterator_Pair;
-    typedef thrust::tuple<Coord_T, Coord_T, Coord_T> Coord3;
-  
-  public:
+    typedef thrust::zip_iterator<thrust::tuple<Coord_Iterator, Coord_Iterator, Coord_Iterator> > Coord_Iterator_Tuple;
 
-    Points_T(const int npts, thrust::host_vector<Coord_T> pts)
+    Points_Vector(const int npts, thrust::host_vector<Coord_T> pts)
       : npts(npts) {
       // Create device vectors
       px = Coord_Vector(npts);
@@ -42,11 +40,11 @@ namespace nearpt3 {
     }
 
     // Taken from zip iterator example
-    Coord_3_Iterator begin() {
+    Coord_Iterator_Tuple begin() {
       return thrust::make_zip_iterator(make_tuple(px.begin(), py.begin(), pz.begin()));
     }
 
-    Coord_3_Iterator end() {
+    Coord_Iterator_Tuple end() {
       return thrust::make_zip_iterator(make_tuple(px.end(), py.end(), pz.end()));
     }
 

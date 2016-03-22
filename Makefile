@@ -12,12 +12,16 @@ CXXFLAGS=-g -O3 -Wall
 CUDAFLAGS=-O3 -arch=compute_35
 #CUDAFLAGS=-g -G -O3 -arch=compute_35
 #CUDAFLAGS=-g -G -O3 -arch=compute_35 --ptxas-options=-v
+DEBUGFLAGS=-g -O3 -D=DEBUG -arch=compute_35
 
 INCLUDE= -I"$(CUDA_INSTALL_PATH)/include"
 SRC_DIR=src
 
 all: 
 	$(CUDA) $(CUDAFLAGS) $(INCLUDE) $(CUDA_LIBS) $(SRC_DIR)/main.cu -o main
+
+debug:
+	$(CUDA) $(DEBUGFLAGS) $(INCLUDE) $(CUDA_LIBS) $(SRC_DIR)/main.cu -o main
 
 clean:
 	$(RM) main

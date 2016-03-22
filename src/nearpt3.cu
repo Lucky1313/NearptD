@@ -43,8 +43,9 @@ namespace nearpt3 {
     sizeof(nearpt3::cellsearchorder) / sizeof(nearpt3::cellsearchorder[0][0])/4;
 
   template<typename Coord_T> Grid_T<Coord_T>*
-  Preprocess(const int nfixpts, Points_T<Coord_T>* pts) {
-    typedef thrust::tuple<Coord_T, Coord_T, Coord_T> Coord3;
+  Preprocess(const int nfixpts, Points_Vector<Coord_T>* pts) {
+    typedef typename Grid_T<Coord_T>::Coord_Tuple Coord_Tuple;
+    typedef typename Grid_T<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
     
     Grid_T<Coord_T> *g;
     g = new Grid_T<Coord_T>;
@@ -80,6 +81,9 @@ namespace nearpt3 {
       g->d_cell[i] = ((ng-1)-(lo[i]+hi[i])*g->r_cell) * 0.5;
     }
 
+    point_to_id_functor<Coord_Tuple> g_point_to_id(g->ng, g->r_cell, g->d_cell[0],
+                                                   g->d_cell[1], g->d_cell[2]);
+
     #ifdef DEBUG
     cout << "Grid info:";
     cout << "\nng: " << g->ng;
@@ -92,11 +96,11 @@ namespace nearpt3 {
 
     g->base = thrust::device_vector<int>(g->ng3+1, 1);
     g->cells = thrust::device_vector<int>(g->nfixpts);
-
+    g->cell_indices = thrust::device_vector<int>(g->nfixpts);
+    thrust::sequence(g->cell_indices.begin(), g->cell_indices.end());
+    
     // Calculate cell id from point
-    thrust::transform(pts->begin(), pts->end(), g->cells.begin(),
-                      point_to_id_functor<Coord3>(g->ng, g->r_cell, g->d_cell[0],
-                                                  g->d_cell[1], g->d_cell[2]));
+    thrust::transform(pts->begin(), pts->end(), g->cells.begin(), g_point_to_id);
 
     #ifdef DEBUG
     cout << "Cell IDs (cells): [";
@@ -109,7 +113,8 @@ namespace nearpt3 {
       throw "Bad cell";
     }
 
-    thrust::sort(g->cells.begin(), g->cells.end());
+    // Keep track of the indices of cells during sorting
+    thrust::stable_sort_by_key(g->cells.begin(), g->cells.end(), g->cell_indices.begin());
 
     #ifdef DEBUG
     cout << "Sorted Cell IDs (cells): [";
@@ -134,23 +139,44 @@ namespace nearpt3 {
       cout << "ERROR: Internal inconsistency; wrong " << PRINTN(g->base[g->ng3]);
       throw "Internal inconsistency";
     }
-    
-    thrust::fill(g->cells.begin(), g->cells.end(), 0);
 
-    // SERIAL
-    for (int n=0; n<g->nfixpts; ++n) {
-      const int ic(g->point_to_id(n));
-      const int pitc = g->cells[g->base[ic+1]-1]++;
-      g->cells[g->base[ic]+pitc] = n;
-    }
-    /*
-    thrust::transform(pts->begin(), pts->end(), g->cells.begin(),
-                      point_to_id_functor<Coord3>(g->ng, g->r_cell, g->d_cell[0],
-                                                  g->d_cell[1], g->d_cell[2]));
-    thrust::stable_sort_by_key();
-    */
+    // Transform iterator to compute point ids then permutation iterator to get value from base
+    typedef thrust::transform_iterator<point_to_id_functor<Coord_Tuple>, Coord_Iterator_Tuple> ptid_itr;
+    ptid_itr ptid_begin(pts->begin(), g_point_to_id);
+    ptid_itr ptid_end(pts->end(), g_point_to_id);
+
+    typedef thrust::device_vector<int>::iterator IntItr;
+    typedef thrust::permutation_iterator<IntItr, ptid_itr> PermItr;
+    PermItr cbbegin(g->base.begin(), ptid_begin);
+
+    // Exclusive scan by key to get count for number of points in cell
+    thrust::constant_iterator<int> one(1);
+    thrust::exclusive_scan_by_key(g->cells.begin(), g->cells.end(), one, g->cells.begin());
+
+    // 'Undo' previous sort to have an increasing point count per cell
+    thrust::stable_sort_by_key(g->cell_indices.begin(), g->cell_indices.end(), g->cells.begin());
+
+    // Offset calculated base indices from permutation iterator by point per cell count
+    thrust::plus<int> plus_op;
+    thrust::transform(g->cells.begin(), g->cells.end(), cbbegin, g->cell_indices.begin(), plus_op);
+
+    // Fill cells with increasing count
+    thrust::sequence(g->cells.begin(), g->cells.end());
+
+    // Reorder indices by offset base indices
+    thrust::stable_sort_by_key(g->cell_indices.begin(), g->cell_indices.end(), g->cells.begin());
+    
     #ifdef DEBUG
-    cout << "Iterative (cells): [";
+    cout << "Cell indices: [";
+    thrust::copy(g->cell_indices.begin(), g->cell_indices.end(), ostream_iterator<int>(cout, ", "));
+    cout << "]" << endl;
+    cout << "ID (cells iterator): [";
+    thrust::copy(ptid_begin, ptid_end, ostream_iterator<int>(cout, ", "));
+    cout << "]" << endl;
+    cout << "Permutation (cells): [";
+    thrust::copy(cbbegin, cbbegin + g->nfixpts, ostream_iterator<int>(cout, ", "));
+    cout << "]" << endl;
+    cout << "Point to cell (cells): [";
     thrust::copy(g->cells.begin(), g->cells.end(), ostream_iterator<int>(cout, ", "));
     cout << "]" << endl;
     #endif
@@ -160,17 +186,19 @@ namespace nearpt3 {
 
   template<typename Coord_T> int
   Query(Grid_T<Coord_T>* g, const array<Coord_T, 3> q) {
+    typedef typename Grid_T<Coord_T>::Coord_Tuple Coord_Tuple;
+    typedef typename Grid_T<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
 
     int closestpt(g->Query_Fast_Case(q));
     if (closestpt>=0) {
       return closestpt;
     }
-
+    
     Cell3 querycell(g->Compute_Cell_Containing_Point(q));
 
     double dist(numeric_limits<double>::max());
-    int closecell(-1);
-    int goodsortnum;
+    //int closecell(-1);
+    //int goodsortnum;
     bool foundit(false);
     int nstop(ncellsearchorder);
     
@@ -209,7 +237,7 @@ namespace nearpt3 {
           const Cell3 s3(s2[perm3[iperm][0]], s2[perm3[iperm][1]], s2[perm3[iperm][2]]);
           const Cell3 c2(querycell+s3);
           if (!g->check(c2)) continue;  // outside the universe?
-          goodsortnum = isort;
+          //goodsortnum = isort;
           g->querythiscell(c2, q, thisclosest, thisdist);
           if (thisclosest < 0) continue;
 
@@ -219,7 +247,7 @@ namespace nearpt3 {
           if (thisdist<dist || (thisdist==dist && thisclosest<closestpt)) {
             dist = thisdist;
             closestpt = thisclosest;
-            closecell =  g->cellid_to_int(c2);
+            //closecell = g->cellid_to_int(c2);
             if (!foundit) {
               foundit = true;
               nstop = cellsearchorder[isort][3];
@@ -240,17 +268,11 @@ namespace nearpt3 {
     }
     
     // No nearby points, so exhaustively search over all the fixed points.
-    typedef thrust::tuple<Coord_T, Coord_T, Coord_T> Coord3;
-    typedef thrust::device_vector<Coord_T> Coord_Vector;
-    typedef typename Coord_Vector::iterator Coord_Iterator;
-    typedef thrust::tuple<Coord_Iterator, Coord_Iterator, Coord_Iterator> Coord_Iterator_Tuple;
-    typedef thrust::zip_iterator<Coord_Iterator_Tuple> Coord_3_Iterator;
     typedef thrust::device_vector<int>::iterator IntItr;
-    typedef thrust::transform_iterator<distance2_functor<Coord3>, Coord_3_Iterator> dist2_itr;
-    dist2_itr begin(g->pts->begin(),
-                    distance2_functor<Coord3>(q[0], q[1], q[2]));
-    dist2_itr end(g->pts->end(),
-                    distance2_functor<Coord3>(q[0], q[1], q[2]));
+    typedef thrust::transform_iterator<distance2_functor<Coord_Tuple>, Coord_Iterator_Tuple> dist2_itr;
+    distance2_functor<Coord_Tuple> distance2(q[0], q[1], q[2]);
+    dist2_itr begin(g->pts->begin(), distance2);
+    dist2_itr end(g->pts->end(), distance2);
     dist2_itr result = thrust::min_element(begin, end);
     closestpt = g->cells[result - begin];
     
