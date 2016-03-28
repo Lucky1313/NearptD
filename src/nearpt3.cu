@@ -30,6 +30,7 @@ using namespace std;
 using boost::array;
 
 namespace nearpt3 {
+  
 	double ng_factor = 1.6;
 
   // cellsearchorder:
@@ -83,7 +84,7 @@ namespace nearpt3 {
 
     point_to_id_functor<Coord_Tuple> g_point_to_id(g->ng, g->r_cell, g->d_cell[0],
                                                    g->d_cell[1], g->d_cell[2]);
-
+    
     #ifdef DEBUG
     cout << "Grid info:";
     cout << "\nng: " << g->ng;
@@ -180,6 +181,30 @@ namespace nearpt3 {
     thrust::copy(g->cells.begin(), g->cells.end(), ostream_iterator<int>(cout, ", "));
     cout << "]" << endl;
     #endif
+    
+
+    #ifdef STATS
+    g->Num_Points_Per_Cell.resize(g->ng3, 0);
+    g->Num_Cells_Searched.resize(g->Max_Cells_Searched+1, 0);
+    g->Num_Points_Checked.resize(g->Max_Points_Checked+1, 0);
+
+    g->Min_Points_Per_Cell = -1;
+    g->Max_Points_Per_Cell = -1;
+    g->Avg_Points_Per_Cell = -1;
+    g->Num_Fast_Queries = 0;
+    g->Num_Slow_Queries = 0;
+    g->Num_Exhaustive_Queries = 0;
+    g->Total_Cells_Searched = 0;
+    g->Total_Points_Checked = 0;
+    g->Points_Checked = 0;
+
+    thrust::adjacent_difference(g->base.begin(), g->base.end(), g->Num_Points_Per_Cell.begin());
+    g->Min_Points_Per_Cell = *thrust::min_element(g->Num_Points_Per_Cell.begin()+1,
+                                                  g->Num_Points_Per_Cell.end());
+    g->Max_Points_Per_Cell = *thrust::max_element(g->Num_Points_Per_Cell.begin()+1,
+                                                  g->Num_Points_Per_Cell.end());
+    g->Avg_Points_Per_Cell = static_cast<float>(nfixpts) / static_cast<float>(g->ng3);
+    #endif
 
     return g;
   }
@@ -189,10 +214,20 @@ namespace nearpt3 {
     typedef typename Grid_T<Coord_T>::Coord_Tuple Coord_Tuple;
     typedef typename Grid_T<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
 
+    
     int closestpt(g->Query_Fast_Case(q));
     if (closestpt>=0) {
+      #ifdef STATS
+      g->Num_Fast_Queries++;
+      g->Num_Points_Checked[min(g->Max_Points_Checked, g->Points_Checked)]++;
+      g->Total_Points_Checked += g->Points_Checked;
+      #endif
       return closestpt;
     }
+    #ifdef STATS
+    int Num_Cells_Searched_This_Query = 1;
+    int Num_Points_Checked_This_Query = g->Points_Checked;
+    #endif
     
     Cell3 querycell(g->Compute_Cell_Containing_Point(q));
 
@@ -237,8 +272,11 @@ namespace nearpt3 {
           const Cell3 s3(s2[perm3[iperm][0]], s2[perm3[iperm][1]], s2[perm3[iperm][2]]);
           const Cell3 c2(querycell+s3);
           if (!g->check(c2)) continue;  // outside the universe?
-          //goodsortnum = isort;
           g->querythiscell(c2, q, thisclosest, thisdist);
+          #ifdef STATS
+          Num_Cells_Searched_This_Query++;
+          Num_Points_Checked_This_Query += g->Points_Checked;
+          #endif
           if (thisclosest < 0) continue;
 
           // If two fixed points are the same distance from the query, then return the one with the
@@ -264,18 +302,31 @@ namespace nearpt3 {
     }
 
   L_end_isort: if (closestpt>=0) {
+      #ifdef STATS
+      g->Num_Slow_Queries++;
+      g->Num_Cells_Searched[min(g->Max_Cells_Searched, Num_Cells_Searched_This_Query)]++;
+      g->Total_Cells_Searched += Num_Cells_Searched_This_Query;
+      g->Num_Points_Checked[min(g->Max_Points_Checked, Num_Points_Checked_This_Query)]++;
+      g->Total_Points_Checked += Num_Points_Checked_This_Query;
+      #endif
       return closestpt;
     }
     
     // No nearby points, so exhaustively search over all the fixed points.
-    typedef thrust::device_vector<int>::iterator IntItr;
     typedef thrust::transform_iterator<distance2_functor<Coord_Tuple>, Coord_Iterator_Tuple> dist2_itr;
     distance2_functor<Coord_Tuple> distance2(q[0], q[1], q[2]);
     dist2_itr begin(g->pts->begin(), distance2);
     dist2_itr end(g->pts->end(), distance2);
     dist2_itr result = thrust::min_element(begin, end);
     closestpt = g->cells[result - begin];
-    
+
+    #ifdef STATS
+    g->Num_Exhaustive_Queries++;
+    //g->Num_Cells_Searched[min(g->Max_Cells_Searched, g->ng3)]++;
+    //g->Total_Cells_Searched += Num_Cells_Searched_This_Query;
+    g->Num_Points_Checked[min(g->Max_Points_Checked, g->nfixpts)]++;
+    g->Total_Points_Checked += Num_Points_Checked_This_Query;
+    #endif
     return closestpt;
   }
   

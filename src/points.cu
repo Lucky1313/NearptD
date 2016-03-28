@@ -55,7 +55,11 @@ namespace nearpt3 {
       array<Coord_T,3> lo = {*thrust::get<0>(xpair), *thrust::get<0>(ypair), *thrust::get<0>(zpair)};
       array<Coord_T,3> hi = {*thrust::get<1>(xpair), *thrust::get<1>(ypair), *thrust::get<1>(zpair)};
       return thrust::pair<array<Coord_T,3>, array<Coord_T,3> >(lo, hi);
-    }    
+    }
+
+    Coord_Tuple operator[] (int i) {
+      return thrust::make_tuple(px[i], py[i], pz[i]);
+    }
 
   private:
     int npts;

@@ -2,6 +2,7 @@
 
 #include <boost/multi_array.hpp>
 #include <iostream>
+#include <vector>
 
 #include "points.cu"
 #include "functors.cu"
@@ -58,6 +59,23 @@ namespace nearpt3 {
     thrust::device_vector<int> cells;
     thrust::device_vector<int> base;
     thrust::device_vector<int> cell_indices;
+
+    #ifdef STATS
+    thrust::device_vector<int> Num_Points_Per_Cell;
+    int Min_Points_Per_Cell;
+    int Max_Points_Per_Cell;
+    float Avg_Points_Per_Cell;
+    int Num_Fast_Queries;
+    int Num_Slow_Queries;
+    int Num_Exhaustive_Queries;
+    static const int Max_Cells_Searched = 1000;
+    vector<int> Num_Cells_Searched;
+    int Total_Cells_Searched;
+    static const int Max_Points_Checked = 10000;
+    vector<int> Num_Points_Checked;
+    int Total_Points_Checked;
+    int Points_Checked;
+    #endif
 
     // Typedefs from Point_Vector class
     typedef typename Points_Vector<Coord_T>::Coord_Tuple Coord_Tuple;
@@ -127,8 +145,11 @@ namespace nearpt3 {
 
     void querythiscell(const Cell3 thiscell, const array<Coord_T, 3> q,
                        int &closestpt, double &dist2) {
-      const int queryint(qpoint_to_id(q));
-      const int npitc(num_points_id(queryint));
+      const int querycell(cellid_to_int(thiscell));
+      const int npitc(num_points_id(querycell));
+      #ifdef STATS
+      Points_Checked = npitc;
+      #endif
       if (npitc<=0) {
         closestpt = -1;
         dist2 = numeric_limits<double>::max();
@@ -139,17 +160,21 @@ namespace nearpt3 {
       typedef thrust::transform_iterator<distance2_functor<Coord_Tuple>, PermItr> dist2_itr;
       PermItr ptsbegin(pts->begin(), cells.begin());
       distance2_functor<Coord_Tuple> distance2(q[0], q[1], q[2]);
-      dist2_itr begin(ptsbegin + base[queryint], distance2);
-      dist2_itr end(ptsbegin + base[queryint+1] - 1, distance2);
+      dist2_itr begin(ptsbegin + base[querycell], distance2);
+      dist2_itr end(ptsbegin + base[querycell+1], distance2);
       dist2_itr result = thrust::min_element(begin, end);
-      closestpt = cells[result - begin + base[queryint]];
+      closestpt = cells[result - begin + base[querycell]];
       dist2 = *result;
+
       return;
     }
 
     int Query_Fast_Case(const array<Coord_T, 3> q) {
       const int queryint(qpoint_to_id(q));
       const int npitc(num_points_id(queryint));
+      #ifdef STATS
+      Points_Checked = npitc;
+      #endif
 
 // #ifdef DEBUG
 //       cout << PRINTC(q[0]) << PRINTC(q[1]) << PRINTN(q[2]);
@@ -157,7 +182,7 @@ namespace nearpt3 {
 //       cout << PRINTC(base[queryint]) << PRINTN(base[queryint+1]);
 // #endif
       
-      if (npitc<=0) return -1; // No points in this cell
+      if (npitc<=0) return -1; // No points in this cell 
 
       int closestpt = -1;
 
@@ -170,19 +195,8 @@ namespace nearpt3 {
       typedef thrust::transform_iterator<distance2_functor<Coord_Tuple>, PermItr> dist2_itr;
       PermItr ptsbegin(pts->begin(), cells.begin());
       dist2_itr begin(ptsbegin + base[queryint], distance2);
-      dist2_itr end(ptsbegin + base[queryint+1] - 1, distance2);
+      dist2_itr end(ptsbegin + base[queryint+1], distance2);
 
-// #ifdef DEBUG
-//       Coord_Iterator_Tuple i(pts->begin());
-//       i += cells[base[queryint]];
-//       Coord_T x = thrust::get<0>(*i);
-//       Coord_T y = thrust::get<1>(*i);
-//       Coord_T z = thrust::get<2>(*i);
-//       cout << PRINTC(cells[base[queryint]]) << PRINTN(cells[base[queryint+1]-1]);
-//       cout << PRINTC(*begin) << PRINTN(*end);
-//       cout << PRINTC(x) << PRINTC(y) << PRINTN(z);
-// #endif
-      
       dist2_itr result = thrust::min_element(begin, end);
       double dist2 = *result;
 
@@ -208,7 +222,17 @@ namespace nearpt3 {
       clip(hicell);
 
       Cell3 qcell(Compute_Cell_Containing_Point(q));
-      if (locell == qcell && hicell == qcell) return closestpt;
+      if (locell == qcell && hicell == qcell) {
+        #ifdef STATS
+        Num_Cells_Searched[1]++;
+        Total_Cells_Searched++;
+        #endif
+        return closestpt;
+      }
+      
+      #ifdef STATS
+      int Num_Cells_Searched_This_Query = 1;
+      #endif
       
       for (Coord_T x=locell[0]; x<=hicell[0]; x++) {
         for (Coord_T y=locell[1]; y<=hicell[1]; y++) {
@@ -220,17 +244,26 @@ namespace nearpt3 {
 //           cout << PRINTC(x) << PRINTC(y) << PRINTC(i01) <<
 //             PRINTC(i0) << PRINTC(i1) << PRINTC(base[i0]) << PRINTN(base[i1+1]);
 // #endif
-
+          if (base[i0] == base[i1+1]) continue;
+          
           dist2_itr b(ptsbegin + base[i0], distance2);
-          dist2_itr e(ptsbegin + base[i1+1] - 1, distance2);
+          dist2_itr e(ptsbegin + base[i1+1], distance2);
           dist2_itr r = thrust::min_element(b, e);
           double d2 = *r;
           if (d2 < dist2 || (d2==dist2 && cells[r - b + base[i0]]<closestpt)) {
             dist2 = d2;
             closestpt = cells[r - b + base[i0]];
           }
+          #ifdef STATS
+          Points_Checked += base[i1+1] - base[i0];
+          Num_Cells_Searched_This_Query += i1 - i0;
+          #endif
         }
       }
+      #ifdef STATS
+      Num_Cells_Searched[min(Max_Cells_Searched, Num_Cells_Searched_This_Query)]++;
+      Total_Cells_Searched += Num_Cells_Searched_This_Query;
+      #endif
     
       return closestpt;
     }
