@@ -20,6 +20,9 @@ namespace nearpt3 {
     typedef thrust::pair<Coord_Iterator, Coord_Iterator> Coord_Iterator_Pair;
     typedef thrust::zip_iterator<thrust::tuple<Coord_Iterator, Coord_Iterator, Coord_Iterator> > Coord_Iterator_Tuple;
 
+    typedef thrust::device_ptr<Coord_T> Coord_Ptr;
+    typedef thrust::tuple<Coord_Ptr, Coord_Ptr, Coord_Ptr> Coord_Ptr_Tuple;
+
     Points_Vector(const int npts, thrust::host_vector<Coord_T> pts)
       : npts(npts) {
       // Create device vectors
@@ -57,8 +60,16 @@ namespace nearpt3 {
       return thrust::pair<array<Coord_T,3>, array<Coord_T,3> >(lo, hi);
     }
 
+    Coord_Ptr_Tuple get_ptrs() {
+      return thrust::make_tuple(px.data(), py.data(), pz.data());
+    }
+
     Coord_Tuple operator[] (int i) {
       return thrust::make_tuple(px[i], py[i], pz[i]);
+    }
+
+    int size() {
+      return npts;
     }
 
   private:

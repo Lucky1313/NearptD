@@ -84,60 +84,61 @@ int main(const int argc, const char* argv[]) {
   if (!fixstream) {
     throw "Error, can't open file fixpts";
   }
+  
+  ret = stat(argv[3], &buf);
+  if (ret < 0) throw "Can't stat qpts";
+  
+  const int qpts_size = buf.st_size;
+  const int nqpts = qpts_size / psize;
+
+  ifstream qstream(argv[3], ios::binary);
+  if (!qstream) { 
+    throw "ERROR: can't open file qpts";
+  }
 
   const double time_read = Print_Time("Read");
 
   // Host vector for read points, not split into x,y,z
-  thrust::host_vector<Coord_T> pts(nfixpts * 3);
+  thrust::host_vector<Coord_T> fixpts(nfixpts * 3);
   for (int i=0; i<nfixpts*3; ++i) {
-    fixstream.read(reinterpret_cast<char*>(&pts[i]), csize);
+    fixstream.read(reinterpret_cast<char*>(&fixpts[i]), csize);
+  }
+
+  // Host vector for query points
+  thrust::host_vector<Coord_T> qpts(nqpts * 3);
+  for (int i=0; i<nqpts*3; ++i) {
+    qstream.read(reinterpret_cast<char*>(&qpts[i]), csize);
   }
 
   const double time_init = Print_Time("Initialization and reading fixed points");
 
   // Structure of arrays rather than Array of structures, thrust good practice
   // Contains 3 device vectors, one for x, y, z
-  nearpt3::Points_Vector<Coord_T> *p = new nearpt3::Points_Vector<Coord_T>(nfixpts, pts); 
+  nearpt3::Points_Vector<Coord_T> *p = new nearpt3::Points_Vector<Coord_T>(nfixpts, fixpts);
+  nearpt3::Points_Vector<Coord_T> *q = new nearpt3::Points_Vector<Coord_T>(nqpts, qpts);
 
   const double time_copy = Print_Time("Copying points to GPU");
       
   nearpt3::Grid_T<Coord_T> *g = nearpt3::Preprocess(nfixpts, p);
 
   const double time_fixed = Print_Time("Processing fixed points");
-
-  ifstream qstream(argv[3], ios::binary);
-  if (!qstream) { 
-    throw "ERROR: can't open file qpts";
-  }
+  
   ofstream pstream(argv[4], ios::binary);
   if (!pstream) { 
     throw "ERROR: can't open output file pairs";
   }
 
-  int nqpts = 0;
-  array<Coord_T,3> q, pt;
-  while (qstream.read(reinterpret_cast<char*>(&q), 3*sizeof(Coord_T))) {
-    nqpts++;
-    int closestpt = nearpt3::Query(g, q);
-    pstream.write(reinterpret_cast<char*>(&q), psize);
-    pt[0] = pts[closestpt*3];
-    pt[1] = pts[closestpt*3+1];
-    pt[2] = pts[closestpt*3+2];
-    pstream.write(reinterpret_cast<char*>(&pt), psize);
+  thrust::device_vector<int> closest(nqpts, -1);
+  nearpt3::Query<Coord_T>(g, q, &closest);
+  for (int i=0; i<nqpts; ++i) {
+    pstream.write(reinterpret_cast<char*>(&(qpts[i*3])), psize);
+    pstream.write(reinterpret_cast<char*>(&(fixpts[closest[i]*3])), psize);
     #ifdef EXHAUSTIVE
-    typedef typename nearpt3::Grid_T<Coord_T>::Coord_Tuple Coord_Tuple;
-    typedef typename nearpt3::Grid_T<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
-    nearpt3::distance2_functor<Coord_Tuple> distance2(q[0], q[1], q[2]);
-    double dist2 = distance2((*p)[closestpt]);
-    typedef thrust::transform_iterator<nearpt3::distance2_functor<Coord_Tuple>, Coord_Iterator_Tuple> dist2_itr;
-    dist2_itr begin(p->begin(), distance2);
-    dist2_itr end(p->end(), distance2);
-    dist2_itr result = thrust::min_element(begin, end);
-    int testclosestpt = result - begin;
-    double testdist2 = *result;
-    if (testclosestpt != closestpt) {
-      cout << "ERROR: " << PRINTC(testclosestpt);
-      write(cout, (*p)[testclosestpt]);
+    int close2 = g->exhaustive_query((*q)[i]);
+    if (close2 != closest[i]) {
+      distance
+      cout << "ERROR: " << PRINTC(close2);
+      write(cout, (*p)[close2]);
       cout << ", " << PRINTN(testdist2);
       cout << PRINTC(q) << PRINTC(closestpt);
       write(cout, (*p)[closestpt]);
