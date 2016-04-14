@@ -1,5 +1,8 @@
+#pragma once
+
+#include <thrust/tuple.h>
 #include <thrust/functional.h>
-#include <limits>
+#include <thrust/device_ptr.h>
 
 #include "cell.cu"
 
@@ -7,12 +10,10 @@ namespace nearpt3 {
 
   
   // clamp_USI     Convert to an unsigned short int while clamping
-
-  template <typename T> __host__ __device__
+  template<typename T> __host__ __device__
   unsigned short int clamp_USI(T a) {
     const T mm(static_cast<T>(USHRT_MAX));
-    return  
-      static_cast<unsigned short int>(a > mm ? mm : (a > 0 ? static_cast<unsigned short int>(a) : 0));
+    return static_cast<unsigned short int>(a > mm ? mm : (a > 0 ? static_cast<unsigned short int>(a) : 0));
   }
 
   // Check if this is a legal cell.
@@ -55,20 +56,18 @@ namespace nearpt3 {
   struct cell_containing_point_functor : public thrust::unary_function<Coord_Tuple, Cell3>
   {
     double r_cell;
-    double d0;
-    double d1;
-    double d2;
+    Coord_Tuple d_cell;
 
-    cell_containing_point_functor() : r_cell(-1), d0(-1), d1(-1), d2(-1) {}
+    cell_containing_point_functor() : r_cell(-1), d_cell(thrust::make_tuple(-1, -1, -1)) {}
 
-    cell_containing_point_functor(double r_cell, double d0, double d1, double d2)
-      : r_cell(r_cell), d0(d0), d1(d1), d2(d2) {}
+    cell_containing_point_functor(double r_cell, Coord_Tuple d_cell)
+      : r_cell(r_cell), d_cell(d_cell) {}
 
     __host__ __device__
     Cell3 operator()(const Coord_Tuple& a) const {
-      int ix = static_cast<short int>(static_cast<double>(thrust::get<0>(a))*r_cell+d0);
-      int iy = static_cast<short int>(static_cast<double>(thrust::get<1>(a))*r_cell+d1);
-      int iz = static_cast<short int>(static_cast<double>(thrust::get<2>(a))*r_cell+d2);
+      int ix = static_cast<short int>(static_cast<double>(thrust::get<0>(a))*r_cell+thrust::get<0>(d_cell));
+      int iy = static_cast<short int>(static_cast<double>(thrust::get<1>(a))*r_cell+thrust::get<1>(d_cell));
+      int iz = static_cast<short int>(static_cast<double>(thrust::get<2>(a))*r_cell+thrust::get<2>(d_cell));
       Cell3 c(ix, iy, iz);
       return c;
     }
@@ -206,8 +205,6 @@ namespace nearpt3 {
   struct fast_query_functor : public thrust::unary_function<thrust::tuple<Coord_T, Coord_T, Coord_T>, int>
   {
     typedef thrust::tuple<Coord_T, Coord_T, Coord_T> Coord_Tuple;
-    typedef thrust::device_ptr<Coord_T> Coord_Ptr;
-    typedef thrust::tuple<Coord_Ptr, Coord_Ptr, Coord_Ptr> Coord_Ptr_Tuple;
     
     clip_cell_functor clip_cell;
     cell_containing_point_functor<Coord_Tuple> cell_containing_point;
@@ -221,14 +218,6 @@ namespace nearpt3 {
                        cell_containing_point_functor<Coord_Tuple> cell_containing_point,
                        query_cell_functor<Coord_T> query_cell)
       : clip_cell(clip_cell), cell_containing_point(cell_containing_point), query_cell(query_cell) {}
-
-    __host__ __device__
-    Coord_Tuple point_at(int i) {
-      Coord_Ptr_Tuple pts(query_cell.pts);
-      return thrust::make_tuple(thrust::get<0>(pts)[i],
-                                thrust::get<1>(pts)[i],
-                                thrust::get<2>(pts)[i]);
-    }
     
     __host__ __device__
     int operator()(const Coord_Tuple& q) {
@@ -276,8 +265,6 @@ namespace nearpt3 {
   struct slow_query_functor : public thrust::unary_function<thrust::tuple<Coord_T, Coord_T, Coord_T>, int>
   {
     typedef thrust::tuple<Coord_T, Coord_T, Coord_T> Coord_Tuple;
-    typedef thrust::device_ptr<Coord_T> Coord_Ptr;
-    typedef thrust::tuple<Coord_Ptr, Coord_Ptr, Coord_Ptr> Coord_Ptr_Tuple;
 
     int ncellsearch;
     thrust::device_ptr<int> cellsearch;
@@ -300,15 +287,6 @@ namespace nearpt3 {
       : ncellsearch(ncellsearch), cellsearch(cellsearch), check_cell(check_cell),
         cell_containing_point(cell_containing_point), query_cell(query_cell) {}
 
-    
-    __host__ __device__
-    Coord_Tuple point_at(int i) {
-      Coord_Ptr_Tuple pts(query_cell.pts);
-      return thrust::make_tuple(thrust::get<0>(pts)[i],
-                                thrust::get<1>(pts)[i],
-                                thrust::get<2>(pts)[i]);
-    }
-    
     __host__ __device__
     int operator()(const Coord_Tuple& q) {
       const int sign3[8][3] = {{1,1,1},{1,1,-1},{1,-1,1},{1,-1,-1},

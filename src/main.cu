@@ -1,121 +1,43 @@
+#include <iostream>
+#include <iomanip>
+
 #include <thrust/host_vector.h>
-#include <thrust/device_ptr.h>
-#include <thrust/iterator/zip_iterator.h>
+#include <thrust/device_vector.h>
 
 #include "nearpt3.cu"
-
-float clocks_per_sec = -1.0;	// will be set later.
-double total_time;
-
-// Printing table for times at end
-// Start with TABLE(precision), then each row is TABLER() followed by TABLEC()...
-
-#define TABLE(p) cout << fixed << setprecision(p)
-#define TABLER(width, arg) cout << left << setw(width) << (arg) << ":"
-#define TABLEC(width, arg) right << setw(width) << (arg)
-
-// GET_PROCESS_CPU_TIME Return CPU (user+system) time since start of process.
-
-double Get_Process_CPU_Time ()
-{
-  struct tms *time_buffer = new tms;
-  (void) times (time_buffer);
-
-  if (clocks_per_sec<0.0) clocks_per_sec = sysconf (_SC_CLK_TCK);
-  return ((time_buffer->tms_utime + time_buffer->tms_stime) / clocks_per_sec);
-}
-
-
-//  GET_DELTA_TIME Returns time in seconds since last Get_Delta_Time.  Automatically initializes
-//  itself on 1st call and returns 0.  Also, return time from process start in its arg.
-
-double Get_Delta_Time (double &new_time)
-{
-  static double old_time = 0.0;
-  double  delta;
-
-  new_time = Get_Process_CPU_Time ();
-  delta = new_time - old_time;
-  old_time = new_time;
-  return delta;
-}
-
-
-// PRINT_TIME Print time since last call, with a message.  Then return the incremental time.
-
-double Print_Time (string msg)
-{
-  double  incrtime = Get_Delta_Time (total_time);
-  //  cout << "\n.....Total CPU Time thru " << msg << " = " << total_time << ", increment="
-  //       << incrtime << '\n' << endl;
-  return incrtime;
-}
+#include "utils.cpp"
 
 int main(const int argc, const char* argv[]) {
   typedef unsigned short int Coord_T;
   const int csize = sizeof(Coord_T);
-  const int psize = 3*csize;
-  struct stat buf;
+  const int psize = 3 * csize;
   
-  if (argc<5) {
-    cerr << "Error, improper number of arguments: " << PRINTN(argc);
+  if (argc!=5) {
+    cerr << "Error, improper number of arguments (5): " << argc;
     cerr << "Usage: ./nearpt ng_factor fixpts qpts pairs" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
-  Print_Time("Init");
-  
   nearpt3::ng_factor = atof(argv[1]);
   if (nearpt3::ng_factor < 0.01 || nearpt3::ng_factor > 100) {
-    cerr << "Error, illegal " << PRINTC(nearpt3::ng_factor) << " set to 1." << endl;
+    cerr << "Error, illegal ng_factor (" << nearpt3::ng_factor << "), set to 1." << endl;
     nearpt3::ng_factor = 1.0;
   }
-
-  int ret = stat(argv[2], &buf);
-  if (ret < 0) throw "Can't stat fixpts";
   
-  const int fixpts_size = buf.st_size;
-  const int nfixpts = fixpts_size / psize;
+  Print_Time("Init");
 
-  #ifdef DEBUG
-  cout << "Number of fixed points: " << nfixpts << endl;
-  #endif
-
-  ifstream fixstream(argv[2], ios::binary);
-  if (!fixstream) {
-    throw "Error, can't open file fixpts";
-  }
+  thrust::host_vector<Coord_T> fixpts;
+  thrust::host_vector<Coord_T> qpts;
   
-  ret = stat(argv[3], &buf);
-  if (ret < 0) throw "Can't stat qpts";
-  
-  const int qpts_size = buf.st_size;
-  const int nqpts = qpts_size / psize;
-
-  ifstream qstream(argv[3], ios::binary);
-  if (!qstream) { 
-    throw "ERROR: can't open file qpts";
-  }
-
-  const double time_read = Print_Time("Read");
-
-  // Host vector for read points, not split into x,y,z
-  thrust::host_vector<Coord_T> fixpts(nfixpts * 3);
-  for (int i=0; i<nfixpts*3; ++i) {
-    fixstream.read(reinterpret_cast<char*>(&fixpts[i]), csize);
-  }
-
-  // Host vector for query points
-  thrust::host_vector<Coord_T> qpts(nqpts * 3);
-  for (int i=0; i<nqpts*3; ++i) {
-    qstream.read(reinterpret_cast<char*>(&qpts[i]), csize);
-  }
+  // Read fixed and query points into memory
+  const int nfixpts(read_points<Coord_T>(argv[2], csize, 3, &fixpts));
+  const int nqpts(read_points<Coord_T>(argv[3], csize, 3, &qpts));
 
   const double time_init = Print_Time("Initialization and reading fixed points");
-
+  
   // Structure of arrays rather than Array of structures, thrust good practice
   // Contains 3 device vectors, one for x, y, z
-  nearpt3::Points_Vector<Coord_T> *p = new nearpt3::Points_Vector<Coord_T>(nfixpts, fixpts);
-  nearpt3::Points_Vector<Coord_T> *q = new nearpt3::Points_Vector<Coord_T>(nqpts, qpts);
+  nearpt3::Point_Vector<Coord_T> *p = new nearpt3::Point_Vector<Coord_T>(nfixpts, fixpts);
+  nearpt3::Point_Vector<Coord_T> *q = new nearpt3::Point_Vector<Coord_T>(nqpts, qpts);
 
   const double time_copy = Print_Time("Copying points to GPU");
       
@@ -128,7 +50,7 @@ int main(const int argc, const char* argv[]) {
     throw "ERROR: can't open output file pairs";
   }
 
-  thrust::device_vector<int> closest(nqpts, -1);
+  thrust::host_vector<int> closest;
   nearpt3::Query<Coord_T>(g, q, &closest);
   for (int i=0; i<nqpts; ++i) {
     pstream.write(reinterpret_cast<char*>(&(qpts[i*3])), psize);
@@ -136,13 +58,7 @@ int main(const int argc, const char* argv[]) {
     #ifdef EXHAUSTIVE
     int close2 = g->exhaustive_query((*q)[i]);
     if (close2 != closest[i]) {
-      distance
-      cout << "ERROR: " << PRINTC(close2);
-      write(cout, (*p)[close2]);
-      cout << ", " << PRINTN(testdist2);
-      cout << PRINTC(q) << PRINTC(closestpt);
-      write(cout, (*p)[closestpt]);
-      cout << ", " << PRINTN(dist2);
+      cout << "ERROR: " << closest[i] << " != " << close2 << endl;
     }
     #endif
   }
@@ -174,6 +90,7 @@ int main(const int argc, const char* argv[]) {
   cout << "Number of Exhaustive Queries: " << g->Num_Exhaustive_Queries << endl;
   cout << endl;
 
+  /*
   cout << "Total number of cells searched: " << g->Total_Cells_Searched << endl;
   cout << "Average number of cells searched per query: " <<
     static_cast<float>(g->Total_Cells_Searched) / static_cast<float>(nqpts) << endl;
@@ -201,10 +118,11 @@ int main(const int argc, const char* argv[]) {
     cout << g->Max_Points_Checked << "+\t" << g->Num_Points_Checked[g->Max_Points_Checked] << endl;
   }
   cout << endl;
+  */
   #endif
 
   #ifdef TIMING
-  cout << fixed << setprecision(5);
+  cout << fixed << setprecision(8);
   cout << nfixpts << "\t" << time_init << "\t" << (time_copy + time_fixed) <<
     "\t" << time_query << "\t" << tf << "\t" << tq << "\t" << total_time << endl;
   #endif

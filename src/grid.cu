@@ -1,54 +1,31 @@
+#pragma once
+
 #include <thrust/device_vector.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/extrema.h>
 
-#include <boost/multi_array.hpp>
-#include <iostream>
-#include <vector>
-
-#include "points.cu"
+#include "point_vector.cu"
 #include "functors.cu"
 
 using namespace std;
-using boost::array;
-
-// Print an expression's name then its value, possibly followed by a comma or endl.  
-// Ex: cout << PRINTC(x) << PRINTN(y);
-
-#define PRINT(arg)  #arg "=" << (arg)
-#define PRINTC(arg)  #arg "=" << (arg) << ", "
-#define PRINTN(arg)  #arg "=" << (arg) << endl
-
-template <typename T>
-void write(ostream &o, const thrust::tuple<T, T, T>& c) {
-  o << "(" << thrust::get<0>(c) << "," << thrust::get<1>(c) << "," << thrust::get<2>(c) << ")";
-}
-
-template <typename T>
-void write(ostream &o, const array<T,3>& c) {
-    o << "(" << c[0] << "," << c[1] << "," << c[2] << ")";
-}
-
-template<typename Coord_T> 
-ostream &operator<<(ostream &o, const array<Coord_T,3> &c) {
-  o << '(' << c[0] << ',' << c[1] << ',' << c[2] << ')';
-  return o;
-}
 
 namespace nearpt3 {
 
   template<typename Coord_T>
   class Grid_T {
-
   public:
+    // Typedefs from Point_Vector class
+    typedef typename Point_Vector<Coord_T>::Coord_Tuple Coord_Tuple;
+    typedef typename Point_Vector<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
+
     int ng;
     int ng3;
     double r_cell;
-    array<double,3> d_cell;
-    double d[3];
+    Coord_Tuple d_cell;
     int nfixpts;
-    Points_Vector<Coord_T>* pts;
+    Point_Vector<Coord_T>* pts;
     thrust::device_vector<int> cells;
     thrust::device_vector<int> base;
-    thrust::device_vector<int> cell_indices;
     thrust::device_vector<int> cellsearch;
 
     #ifdef STATS
@@ -67,10 +44,6 @@ namespace nearpt3 {
     int Total_Points_Checked;
     int Points_Checked;
     #endif
-
-    // Typedefs from Point_Vector class
-    typedef typename Points_Vector<Coord_T>::Coord_Tuple Coord_Tuple;
-    typedef typename Points_Vector<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
 
     // Functors
     check_cell_functor check_cell;

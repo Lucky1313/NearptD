@@ -1,17 +1,16 @@
+#pragma once
+
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 #include <thrust/iterator/zip_iterator.h>
-
-#include <boost/multi_array.hpp>
+#include <thrust/extrema.h>
 
 #include "strided_range.cu"
-
-using boost::array;
 
 namespace nearpt3 {
 
   template<typename Coord_T>
-  class Points_Vector {
+  class Point_Vector {
   public:
     // Convenience Typedefs
     typedef thrust::tuple<Coord_T, Coord_T, Coord_T> Coord_Tuple;
@@ -23,7 +22,7 @@ namespace nearpt3 {
     typedef thrust::device_ptr<Coord_T> Coord_Ptr;
     typedef thrust::tuple<Coord_Ptr, Coord_Ptr, Coord_Ptr> Coord_Ptr_Tuple;
 
-    Points_Vector(const int npts, thrust::host_vector<Coord_T> pts)
+    Point_Vector(const int npts, thrust::host_vector<Coord_T> pts)
       : npts(npts) {
       // Create device vectors
       px = Coord_Vector(npts);
@@ -50,26 +49,33 @@ namespace nearpt3 {
     Coord_Iterator_Tuple end() {
       return thrust::make_zip_iterator(make_tuple(px.end(), py.end(), pz.end()));
     }
+    
+    int get_size() {
+      return npts;
+    }
 
-    thrust::pair<array<Coord_T,3>, array<Coord_T,3> > minmax() {
+    // Return pair of minimum and maximum in each dimension
+    // Not technically a coord tuple, as they are not a point in the original data, but makes data easier to send
+    thrust::pair<Coord_Tuple, Coord_Tuple> minmax() {
       Coord_Iterator_Pair xpair = thrust::minmax_element(px.begin(), px.end());
       Coord_Iterator_Pair ypair = thrust::minmax_element(py.begin(), py.end());
       Coord_Iterator_Pair zpair = thrust::minmax_element(pz.begin(), pz.end());
-      array<Coord_T,3> lo = {*thrust::get<0>(xpair), *thrust::get<0>(ypair), *thrust::get<0>(zpair)};
-      array<Coord_T,3> hi = {*thrust::get<1>(xpair), *thrust::get<1>(ypair), *thrust::get<1>(zpair)};
-      return thrust::pair<array<Coord_T,3>, array<Coord_T,3> >(lo, hi);
+      Coord_Tuple lo(thrust::make_tuple(*thrust::get<0>(xpair),
+                                        *thrust::get<0>(ypair),
+                                        *thrust::get<0>(zpair)));
+      Coord_Tuple hi(thrust::make_tuple(*thrust::get<1>(xpair),
+                                        *thrust::get<1>(ypair),
+                                        *thrust::get<1>(zpair)));
+      return thrust::pair<Coord_Tuple, Coord_Tuple>(lo, hi);
     }
 
+    // Get device pointers of vectors (for referencing on GPU)
     Coord_Ptr_Tuple get_ptrs() {
       return thrust::make_tuple(px.data(), py.data(), pz.data());
     }
-
+    
     Coord_Tuple operator[] (int i) {
       return thrust::make_tuple(px[i], py[i], pz[i]);
-    }
-
-    int size() {
-      return npts;
     }
 
   private:
@@ -78,5 +84,4 @@ namespace nearpt3 {
     Coord_Vector py;
     Coord_Vector pz;
   };
-
 };
