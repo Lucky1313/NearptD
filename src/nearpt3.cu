@@ -41,22 +41,33 @@ namespace nearpt3 {
   const int ncellsearchorder = 
     sizeof(nearpt3::cellsearchorder) / sizeof(nearpt3::cellsearchorder[0])/4;
 
-  // Process all fixed points into a uniform grid
-  template<typename Coord_T> Grid_T<Coord_T>*
-  Preprocess(const int nfixpts, Point_Vector<Coord_T>* pts) {
-    // Typedefs derived from Grid class
-    typedef typename Grid_T<Coord_T>::Coord_Tuple Coord_Tuple;
-    typedef typename Grid_T<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
+  template<typename Coord_T>
+  struct scale : public thrust::binary_function<Coord_T, Coord_T, double> {
+    const int ng;
+    scale(int ng) : ng(ng) {}
     
-    Grid_T<Coord_T> *g;
-    g = new Grid_T<Coord_T>;
+    double operator()(const Coord_T& lo, const Coord_T& hi) {
+      return 0.99 * ng / static_cast<double>(hi - lo);
+    }
+  };
+
+  // Process all fixed points into a uniform grid
+  template<typename Coord_T, int Dim> Grid_T<Coord_T, Dim>*
+  Preprocess(const int nfixpts, Point_Vector<Coord_T, Dim>* pts) {
+    // Typedefs derived from Grid class
+    typedef typename Grid_T<Coord_T, Dim>::Coord_Tuple Coord_Tuple;
+    typedef typename Grid_T<Coord_T, Dim>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
+    
+    Grid_T<Coord_T, Dim> *g;
+    g = new Grid_T<Coord_T, Dim>;
     
     g->nfixpts = nfixpts;
     int &ng = g->ng;
-    ng = static_cast<int> (ng_factor * cbrt(static_cast<double>(nfixpts)));
+    // Multiply by the dim root of the number of points
+    ng = static_cast<int> (ng_factor * pow(static_cast<double>(nfixpts), 1.0 / static_cast<double>(Dim)));
 
     ng = min(2000, max(1, ng));
-    g->ng3 = ng * ng * ng;
+    g->ng3 = pow(ng, Dim);
     g->pts = pts;
 
     // Ensure monotonic cell search order
@@ -75,9 +86,12 @@ namespace nearpt3 {
     cout << thrust::get<0>(hi) << ", " << thrust::get<1>(hi) << ", " << thrust::get<2>(hi) << endl;
     #endif
 
-    Double_Tuple s(thrust::make_tuple(0.99 * ng / static_cast<double>(thrust::get<0>(hi) - thrust::get<0>(lo)),
-                                      0.99 * ng / static_cast<double>(thrust::get<1>(hi) - thrust::get<1>(lo)),
-                                      0.99 * ng / static_cast<double>(thrust::get<2>(hi) - thrust::get<2>(lo))));
+    scale<Coord_T> sc(ng);
+    transform_functor<Coord_Tuple, Coord_Tuple, Double_Tuple, scale<Coord_T>, Dim> make_scale;
+    Double_Tuple s = make_scale(lo, hi, sc);
+    // Double_Tuple s(thrust::make_tuple(0.99 * ng / static_cast<double>(thrust::get<0>(hi) - thrust::get<0>(lo)),
+    //                                   0.99 * ng / static_cast<double>(thrust::get<1>(hi) - thrust::get<1>(lo)),
+    //                                   0.99 * ng / static_cast<double>(thrust::get<2>(hi) - thrust::get<2>(lo))));
     
     g->r_cell = min(min(thrust::get<0>(s), thrust::get<1>(s)), thrust::get<2>(s));
     g->d_cell = thrust::make_tuple(((ng-1)-(thrust::get<0>(lo)+thrust::get<0>(hi))*g->r_cell) * 0.5,
@@ -217,7 +231,7 @@ namespace nearpt3 {
 
   // Perform a single query
   template<typename Coord_T>
-  void Query(Grid_T<Coord_T>* g, thrust::tuple<Coord_T, Coord_T, Coord_T>& q, int& closest) {
+  void Query(Grid_T<Coord_T, 3>* g, thrust::tuple<Coord_T, Coord_T, Coord_T>& q, int& closest) {
     // Get id of cell containing query
     const int queryint(g->point_to_id(q));
     // Get number of points in cell
@@ -240,10 +254,10 @@ namespace nearpt3 {
 
   // Parallel query on preprocessed grid
   template<typename Coord_T>
-  void Query(Grid_T<Coord_T>* g, Point_Vector<Coord_T>* q, thrust::host_vector<int>* closest) {
+  void Query(Grid_T<Coord_T, 3>* g, Point_Vector<Coord_T, 3>* q, thrust::host_vector<int>* closest) {
     // Typedefs derived from Grid class
-    typedef typename Grid_T<Coord_T>::Coord_Tuple Coord_Tuple;
-    typedef typename Grid_T<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
+    typedef typename Grid_T<Coord_T, 3>::Coord_Tuple Coord_Tuple;
+    typedef typename Grid_T<Coord_T, 3>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
     
     // Initialize vector of indices
     const int nqpts(q->get_size());

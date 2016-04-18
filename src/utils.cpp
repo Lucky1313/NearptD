@@ -78,3 +78,4 @@ int read_points(const char* filename, const int csize, const int dim, thrust::ho
 
   return npts;
 }
+

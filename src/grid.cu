@@ -11,19 +11,19 @@ using namespace std;
 
 namespace nearpt3 {
 
-  template<typename Coord_T>
+  template<typename Coord_T, size_t Dim>
   class Grid_T {
   public:
     // Typedefs from Point_Vector class
-    typedef typename Point_Vector<Coord_T>::Coord_Tuple Coord_Tuple;
-    typedef typename Point_Vector<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
+    typedef typename Point_Vector<Coord_T, Dim>::Coord_Tuple Coord_Tuple;
+    typedef typename Point_Vector<Coord_T, Dim>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
 
     int ng;
     int ng3;
     double r_cell;
     Double_Tuple d_cell;
     int nfixpts;
-    Point_Vector<Coord_T>* pts;
+    Point_Vector<Coord_T, Dim>* pts;
     thrust::device_vector<int> cells;
     thrust::device_vector<int> base;
     thrust::device_vector<int> cellsearch;

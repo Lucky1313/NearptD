@@ -26,7 +26,7 @@ namespace nearpt3 {
     check_cell_functor(int ng) : ng(ng) {}
 
     __host__ __device__
-    bool operator()(const Cell3& a) const {
+    bool operator()(const Cell<3>& a) const {
       if (a[0] < 0 || a[0] >= ng ) return false;
       if (a[1] < 0 || a[1] >= ng ) return false;
       if (a[2] < 0 || a[2] >= ng ) return false;
@@ -43,18 +43,16 @@ namespace nearpt3 {
     clip_cell_functor(int ng) : ng(ng) {}
 
     __host__ __device__
-    void operator()(Cell3& a) {
-      if (a[0] < 0) a[0] = 0;
-      if (a[0] >= ng) a[0] = ng-1;
-      if (a[1] < 0) a[1] = 0;
-      if (a[1] >= ng) a[1] = ng-1;
-      if (a[2] < 0) a[2] = 0;
-      if (a[2] >= ng) a[2] = ng-1;
+    void operator()(Cell<3>& a) {
+      for (size_t i=0; i<3; ++i) {
+        if (a[i] < 0) a[i] = 0;
+        if (a[i] >= ng) a[i] = ng-1;
+      }
     }
   };
 
   template<typename Coord_Tuple>
-  struct cell_containing_point_functor : public thrust::unary_function<Coord_Tuple, Cell3>
+  struct cell_containing_point_functor : public thrust::unary_function<Coord_Tuple, Cell<3> >
   {
     double r_cell;
     Double_Tuple d_cell;
@@ -65,16 +63,16 @@ namespace nearpt3 {
       : r_cell(r_cell), d_cell(d_cell) {}
 
     __host__ __device__
-    Cell3 operator()(const Coord_Tuple& a) const {
+    Cell<3> operator()(const Coord_Tuple& a) const {
       int ix = static_cast<short int>(static_cast<double>(thrust::get<0>(a))*r_cell+thrust::get<0>(d_cell));
       int iy = static_cast<short int>(static_cast<double>(thrust::get<1>(a))*r_cell+thrust::get<1>(d_cell));
       int iz = static_cast<short int>(static_cast<double>(thrust::get<2>(a))*r_cell+thrust::get<2>(d_cell));
-      Cell3 c(ix, iy, iz);
+      Cell<3> c(ix, iy, iz);
       return c;
     }
   };
 
-  struct cell_to_id_functor : public thrust::unary_function<Cell3, int>
+  struct cell_to_id_functor : public thrust::unary_function<Cell<3>, int>
   {
     int ng;
 
@@ -82,7 +80,7 @@ namespace nearpt3 {
     cell_to_id_functor(int ng) : ng(ng) {}
   
     __host__ __device__
-    int operator()(const Cell3& c) const {
+    int operator()(const Cell<3>& c) const {
       if (c[0]<0 || c[0] >=ng || c[1]<0 || c[1] >=ng || c[2]<0 || c[2] >=ng) return -1;
       return (static_cast<int> (c[0])*ng + static_cast<int>(c[1]))*ng + c[2];
     }
@@ -234,13 +232,13 @@ namespace nearpt3 {
                                           clamp_USI(static_cast<double>(thrust::get<1>(q)) + distf + 1.0),
                                           clamp_USI(static_cast<double>(thrust::get<2>(q)) + distf + 1.0)));
       
-      Cell3 locell(cell_containing_point(lopt));
-      Cell3 hicell(cell_containing_point(hipt));
+      Cell<3> locell(cell_containing_point(lopt));
+      Cell<3> hicell(cell_containing_point(hipt));
 
       clip_cell(locell);
       clip_cell(hicell);
 
-      Cell3 qcell(cell_containing_point(q));
+      Cell<3> qcell(cell_containing_point(q));
       if (locell == qcell && hicell == qcell) {
         return closestpt;
       }
@@ -249,7 +247,7 @@ namespace nearpt3 {
       for (Coord_T x=locell[0]; x<=hicell[0]; ++x) {
         for (Coord_T y=locell[1]; y<=hicell[1]; ++y) {
           for (Coord_T z=locell[2]; z<=hicell[2]; ++z) {
-            queryint = query_cell.point_to_id.cell_to_id(Cell3(x, y, z));
+            queryint = query_cell.point_to_id.cell_to_id(Cell<3>(x, y, z));
             query_cell(queryint, q, close2, d2);
             if (close2 != -1 && (d2 < dist2 || (d2 == dist2 && close2 < closestpt))) {
               closestpt = close2;
@@ -294,7 +292,7 @@ namespace nearpt3 {
                                {-1,1,1},{-1,1,-1},{-1,-1,1},{-1,-1,-1}};
       const int perm3[6][3] = {{0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}};
 
-      Cell3 qcell = cell_containing_point(q);
+      Cell<3> qcell = cell_containing_point(q);
       int queryint = query_cell.point_to_id.cell_to_id(qcell);
       int closestpt = -1;
       double dist2 = -1;
@@ -305,14 +303,14 @@ namespace nearpt3 {
       for (int isort=0; isort<nstop; ++isort) {
         int close2;
         double d2;
-        Cell3 s (cellsearch[isort*4], cellsearch[isort*4+1], cellsearch[isort*4+2]);
+        Cell<3> s (cellsearch[isort*4], cellsearch[isort*4+1], cellsearch[isort*4+2]);
 
         for (int isign=0; isign<8; ++isign) {
           if (s[0]==0 && sign3[isign][0]== -1) continue;
           if (s[1]==0 && sign3[isign][1]== -1) continue;
           if (s[2]==0 && sign3[isign][2]== -1) continue;
 
-          const Cell3 s2(s*sign3[isign]);
+          const Cell<3> s2(s*sign3[isign]);
 
           for (int iperm=0; iperm<6; ++iperm) {
             switch (iperm) {
@@ -330,8 +328,8 @@ namespace nearpt3 {
               if (s[0]==s[2]) continue;
               break;
             }
-            const Cell3 s3(s2[perm3[iperm][0]], s2[perm3[iperm][1]], s2[perm3[iperm][2]]);
-            const Cell3 c2(qcell+s3);
+            const Cell<3> s3(s2[perm3[iperm][0]], s2[perm3[iperm][1]], s2[perm3[iperm][2]]);
+            const Cell<3> c2(qcell+s3);
             if (!check_cell(c2)) continue;
             int cell_id(query_cell.point_to_id.cell_to_id(c2));
             query_cell(cell_id, q, close2, d2);

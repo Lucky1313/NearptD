@@ -10,7 +10,8 @@
 int main(const int argc, const char* argv[]) {
   typedef unsigned short int Coord_T;
   const int csize = sizeof(Coord_T);
-  const int psize = 3 * csize;
+  const int dim = 3;
+  const int psize = dim * csize;
   
   if (argc!=5) {
     cerr << "Error, improper number of arguments (5): " << argc;
@@ -28,19 +29,18 @@ int main(const int argc, const char* argv[]) {
   thrust::host_vector<Coord_T> fixpts;
   thrust::host_vector<Coord_T> qpts;
   // Read fixed and query points into memory
-  const int nfixpts(read_points<Coord_T>(argv[2], csize, 3, &fixpts));
-  const int nqpts(read_points<Coord_T>(argv[3], csize, 3, &qpts));
+  const int nfixpts(read_points<Coord_T>(argv[2], csize, dim, &fixpts));
+  const int nqpts(read_points<Coord_T>(argv[3], csize, dim, &qpts));
 
   const double time_init = Print_Time("Initialization and reading fixed points");
   
-  // Structure of arrays rather than Array of structures, thrust good practice
-  // Contains 3 device vectors, one for x, y, z
-  nearpt3::Point_Vector<Coord_T> *p = new nearpt3::Point_Vector<Coord_T>(nfixpts, fixpts);
-  nearpt3::Point_Vector<Coord_T> *q = new nearpt3::Point_Vector<Coord_T>(nqpts, qpts);
+  // Structure of arrays rather than Array of structures
+  nearpt3::Point_Vector<Coord_T, dim> p(nfixpts, fixpts);
+  nearpt3::Point_Vector<Coord_T, dim> q(nqpts, qpts);
 
   const double time_copy = Print_Time("Copying points to GPU");
       
-  nearpt3::Grid_T<Coord_T> *g = nearpt3::Preprocess(nfixpts, p);
+  nearpt3::Grid_T<Coord_T, dim> *g = nearpt3::Preprocess<Coord_T, dim>(nfixpts, &p);
 
   const double time_fixed = Print_Time("Processing fixed points");
   
@@ -50,7 +50,7 @@ int main(const int argc, const char* argv[]) {
   }
 
   thrust::host_vector<int> closest(nqpts, -1);
-  nearpt3::Query<Coord_T>(g, q, &closest);
+  nearpt3::Query<Coord_T>(g, &q, &closest);
   for (int i=0; i<nqpts; ++i) {
     pstream.write(reinterpret_cast<char*>(&(qpts[i*3])), psize);
     pstream.write(reinterpret_cast<char*>(&(fixpts[closest[i]*3])), psize);
