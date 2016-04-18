@@ -51,6 +51,17 @@ namespace nearpt3 {
     }
   };
 
+  template<typename Coord_T>
+  struct cell_dim : public thrust::binary_function<Coord_T, Coord_T, double> {
+    const int ng;
+    const double r_cell;
+    cell_dim(int ng, double r_cell) : ng(ng), r_cell(r_cell) {}
+
+    double operator()(const Coord_T& lo, const Coord_T& hi) {
+      return 0.5 * ((ng - 1) - r_cell * (lo + hi));
+    }
+  };
+
   // Process all fixed points into a uniform grid
   template<typename Coord_T, int Dim> Grid_T<Coord_T, Dim>*
   Preprocess(const int nfixpts, Point_Vector<Coord_T, Dim>* pts) {
@@ -92,12 +103,18 @@ namespace nearpt3 {
     // Double_Tuple s(thrust::make_tuple(0.99 * ng / static_cast<double>(thrust::get<0>(hi) - thrust::get<0>(lo)),
     //                                   0.99 * ng / static_cast<double>(thrust::get<1>(hi) - thrust::get<1>(lo)),
     //                                   0.99 * ng / static_cast<double>(thrust::get<2>(hi) - thrust::get<2>(lo))));
-    
-    g->r_cell = min(min(thrust::get<0>(s), thrust::get<1>(s)), thrust::get<2>(s));
-    g->d_cell = thrust::make_tuple(((ng-1)-(thrust::get<0>(lo)+thrust::get<0>(hi))*g->r_cell) * 0.5,
-                                   ((ng-1)-(thrust::get<1>(lo)+thrust::get<1>(hi))*g->r_cell) * 0.5,
-                                   ((ng-1)-(thrust::get<2>(lo)+thrust::get<2>(hi))*g->r_cell) * 0.5);
 
+    thrust::minimum<double> min;
+    reduce_functor<Double_Tuple, double, thrust::minimum<double>, Dim> minimum;
+    //g->r_cell = min(min(thrust::get<0>(s), thrust::get<1>(s)), thrust::get<2>(s));
+    g->r_cell = minimum(s, min);
+    // g->d_cell = thrust::make_tuple(((ng-1)-(thrust::get<0>(lo)+thrust::get<0>(hi))*g->r_cell) * 0.5,
+    //                                ((ng-1)-(thrust::get<1>(lo)+thrust::get<1>(hi))*g->r_cell) * 0.5,
+    //                                ((ng-1)-(thrust::get<2>(lo)+thrust::get<2>(hi))*g->r_cell) * 0.5);
+    cell_dim<Coord_T> cd(ng, g->r_cell);
+    transform_functor<Coord_Tuple, Coord_Tuple, Double_Tuple, cell_dim<Coord_T>, Dim> make_cell_dim;
+    g->d_cell = make_cell_dim(lo, hi, cd);
+    
     // Create device vectors (Must be before functors)
     g->base = thrust::device_vector<int>(g->ng3+1, 1);
     g->cells = thrust::device_vector<int>(g->nfixpts);

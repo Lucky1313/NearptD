@@ -7,7 +7,7 @@
 #include "cell.cu"
 
 namespace nearpt3 {
-
+  
   typedef thrust::tuple<double, double, double> Double_Tuple;
   
   // clamp_USI     Convert to an unsigned short int while clamping

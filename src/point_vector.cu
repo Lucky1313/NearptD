@@ -6,7 +6,7 @@
 #include <thrust/extrema.h>
 
 #include "strided_range.cu"
-#include "tuple_functors.h"
+#include "tuple_utility.h"
 
 namespace nearpt3 {
 
@@ -28,17 +28,13 @@ namespace nearpt3 {
     Point_Vector(const int npts, thrust::host_vector<Coord_T> pts)
       : npts(npts) {
       typedef typename thrust::host_vector<Coord_T>::iterator Host_Itr;
-      px = Coord_Vector(npts);
-      py = Coord_Vector(npts);
-      pz = Coord_Vector(npts);
-
-      strided_range<Host_Itr> x(pts.begin(), pts.end(), Dim);
-      strided_range<Host_Itr> y(pts.begin()+1, pts.end(), Dim);
-      strided_range<Host_Itr> z(pts.begin()+2, pts.end(), Dim);
-
-      thrust::copy(x.begin(), x.end(), px.begin());
-      thrust::copy(y.begin(), y.end(), py.begin());
-      thrust::copy(z.begin(), z.end(), pz.begin());
+      for (size_t i=0; i<Dim; ++i) {
+        vectors[i] = Coord_Vector(npts);
+        begins[i] = vectors[i].begin();
+        ends[i] = vectors[i].end();
+        strided_range<Host_Itr> p(pts.begin()+i, pts.end(), Dim);
+        thrust::copy(p.begin(), p.end(), vectors[i].begin());
+      }
     }
 
     int get_size() {
@@ -47,41 +43,54 @@ namespace nearpt3 {
     
     // Taken from zip iterator example
     Coord_Iterator_Tuple begin() {
-      return thrust::make_zip_iterator(make_tuple(px.begin(), py.begin(), pz.begin()));
+      return thrust::make_zip_iterator(Coord_Itr_Ntuple.make(begins));
     }
 
     Coord_Iterator_Tuple end() {
-      return thrust::make_zip_iterator(make_tuple(px.end(), py.end(), pz.end()));
+      return thrust::make_zip_iterator(Coord_Itr_Ntuple.make(ends));
     }
 
     // Return pair of minimum and maximum in each dimension
     // Not technically a coord tuple, as they are not a point in the original data, but makes data easier to send
     thrust::pair<Coord_Tuple, Coord_Tuple> minmax() {
-      Coord_Iterator_Pair xpair = thrust::minmax_element(px.begin(), px.end());
-      Coord_Iterator_Pair ypair = thrust::minmax_element(py.begin(), py.end());
-      Coord_Iterator_Pair zpair = thrust::minmax_element(pz.begin(), pz.end());
-      Coord_Tuple lo(thrust::make_tuple(*thrust::get<0>(xpair),
-                                        *thrust::get<0>(ypair),
-                                        *thrust::get<0>(zpair)));
-      Coord_Tuple hi(thrust::make_tuple(*thrust::get<1>(xpair),
-                                        *thrust::get<1>(ypair),
-                                        *thrust::get<1>(zpair)));
+      Coord_T los[Dim];
+      Coord_T his[Dim];
+      for (size_t i=0; i<Dim; ++i) {
+        Coord_Iterator_Pair pair = thrust::minmax_element(begins[i], ends[i]);
+        los[i] = *thrust::get<0>(pair);
+        his[i] = *thrust::get<1>(pair);
+      }
+      Coord_Tuple lo(Coord_Ntuple.make(los));
+      Coord_Tuple hi(Coord_Ntuple.make(his));
       return thrust::pair<Coord_Tuple, Coord_Tuple>(lo, hi);
     }
 
     // Get device pointers of vectors (for referencing on GPU)
     Coord_Ptr_Tuple get_ptrs() {
-      return thrust::make_tuple(px.data(), py.data(), pz.data());
+      for (size_t i=0; i<Dim; ++i) {
+        ptrs[i] = vectors[i].data();
+      }
+      return Coord_Ptr_Ntuple.make(ptrs);
     }
     
     Coord_Tuple operator[] (int i) {
-      return thrust::make_tuple(px[i], py[i], pz[i]);
+      for (size_t d=0; d<Dim; ++d) {
+        c[d] = vectors[d][i];
+      }
+      return Coord_Ntuple.make(c);
     }
 
   private:
     int npts;
-    //Coord_Vector vectors[Dim];
-    Coord_Vector px;
-    Coord_Vector py;
-    Coord_Vector pz;
+    Coord_Vector vectors[Dim];
+    // Used making tuples
+    Coord_T c[Dim];
+    Coord_Ptr ptrs[Dim];
+    Coord_Iterator begins[Dim];
+    Coord_Iterator ends[Dim];
+
+    ntuple<Coord_T, Dim> Coord_Ntuple;
+    ntuple<Coord_Ptr, Dim> Coord_Ptr_Ntuple;
+    ntuple<Coord_Iterator, Dim> Coord_Itr_Ntuple;
   };
+};
