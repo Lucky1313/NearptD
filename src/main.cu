@@ -27,7 +27,6 @@ int main(const int argc, const char* argv[]) {
 
   thrust::host_vector<Coord_T> fixpts;
   thrust::host_vector<Coord_T> qpts;
-  
   // Read fixed and query points into memory
   const int nfixpts(read_points<Coord_T>(argv[2], csize, 3, &fixpts));
   const int nqpts(read_points<Coord_T>(argv[3], csize, 3, &qpts));
@@ -50,7 +49,7 @@ int main(const int argc, const char* argv[]) {
     throw "ERROR: can't open output file pairs";
   }
 
-  thrust::host_vector<int> closest;
+  thrust::host_vector<int> closest(nqpts, -1);
   nearpt3::Query<Coord_T>(g, q, &closest);
   for (int i=0; i<nqpts; ++i) {
     pstream.write(reinterpret_cast<char*>(&(qpts[i*3])), psize);
@@ -74,7 +73,7 @@ int main(const int argc, const char* argv[]) {
   
   cout << "Mininum points per cell: " << g->Min_Points_Per_Cell << endl;
   cout << "Maximum points per cell: " << g->Max_Points_Per_Cell << endl;
-  cout << "Average number of points per cell: " << g->Avg_Points_Per_Cell << endl;
+  cout << "Average points per cell: " << g->Avg_Points_Per_Cell << endl;
   cout << "Histogram of number of points per cell:" << endl;
   for (int i=0; i<=g->Max_Points_Per_Cell; ++i) {
     int num = thrust::count(g->Num_Points_Per_Cell.begin()+1, g->Num_Points_Per_Cell.end(), i);
@@ -84,9 +83,9 @@ int main(const int argc, const char* argv[]) {
   }
   cout << endl;
   
-  cout << "Total number of queries: " << nqpts << endl;
-  cout << "Number of Fast Case Queries: " << g->Num_Fast_Queries << endl;
-  cout << "Number of Slow Case Queries: " << g->Num_Slow_Queries << endl;
+  cout << "Total number of queries:      " << nqpts << endl;
+  cout << "Number of Fast Case Queries:  " << g->Num_Fast_Queries << endl;
+  cout << "Number of Slow Case Queries:  " << g->Num_Slow_Queries << endl;
   cout << "Number of Exhaustive Queries: " << g->Num_Exhaustive_Queries << endl;
   cout << endl;
 
@@ -122,7 +121,7 @@ int main(const int argc, const char* argv[]) {
   #endif
 
   #ifdef TIMING
-  cout << fixed << setprecision(8);
+  cout << fixed << setprecision(6);
   cout << nfixpts << "\t" << time_init << "\t" << (time_copy + time_fixed) <<
     "\t" << time_query << "\t" << tf << "\t" << tq << "\t" << total_time << endl;
   #endif

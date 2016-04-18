@@ -25,7 +25,7 @@ exhaustive:
 	$(CUDA) $(CUDAFLAGS) -D=EXHAUSTIVE $(INCLUDE) $(CUDA_LIBS) $(SRC_DIR)/main.cu -o main
 
 stats:
-	$(CUDA) $(CUDAFLAGS) -D=STATS $(INCLUDE) $(CUDA_LIBS) $(SRC_DIR)/main.cu -o main
+	$(CUDA) $(CUDAFLAGS) -D=STATS -DTHRUST_DEBUG $(INCLUDE) $(CUDA_LIBS) $(SRC_DIR)/main.cu -o main
 
 timing:
 	$(CUDA) $(CUDAFLAGS) -D=TIMING $(INCLUDE) $(CUDA_LIBS) $(SRC_DIR)/main.cu -o main

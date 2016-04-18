@@ -23,6 +23,7 @@
 #include "point_vector.cu"
 #include "grid.cu"
 #include "functors.cu"
+#include "utils.cpp"
 
 using namespace std;
 
@@ -74,9 +75,9 @@ namespace nearpt3 {
     cout << thrust::get<0>(hi) << ", " << thrust::get<1>(hi) << ", " << thrust::get<2>(hi) << endl;
     #endif
 
-    Coord_Tuple s(thrust::make_tuple(0.99 * ng / static_cast<double>(thrust::get<0>(hi) - thrust::get<0>(lo)),
-                                     0.99 * ng / static_cast<double>(thrust::get<1>(hi) - thrust::get<1>(lo)),
-                                     0.99 * ng / static_cast<double>(thrust::get<2>(hi) - thrust::get<2>(lo))));
+    Double_Tuple s(thrust::make_tuple(0.99 * ng / static_cast<double>(thrust::get<0>(hi) - thrust::get<0>(lo)),
+                                      0.99 * ng / static_cast<double>(thrust::get<1>(hi) - thrust::get<1>(lo)),
+                                      0.99 * ng / static_cast<double>(thrust::get<2>(hi) - thrust::get<2>(lo))));
     
     g->r_cell = min(min(thrust::get<0>(s), thrust::get<1>(s)), thrust::get<2>(s));
     g->d_cell = thrust::make_tuple(((ng-1)-(thrust::get<0>(lo)+thrust::get<0>(hi))*g->r_cell) * 0.5,
@@ -214,13 +215,36 @@ namespace nearpt3 {
     return g;
   }
 
+  // Perform a single query
+  template<typename Coord_T>
+  void Query(Grid_T<Coord_T>* g, thrust::tuple<Coord_T, Coord_T, Coord_T>& q, int& closest) {
+    // Get id of cell containing query
+    const int queryint(g->point_to_id(q));
+    // Get number of points in cell
+    const int num_points_in_cell(g->num_points_in_cell_id(queryint));
+
+    // If cell contains any points, perform a fast query
+    if (num_points_in_cell > 0) {
+      closest = g->fast_query(q);
+    }
+    else {
+      // Perform a slow query
+      closest = g->slow_query(q);
+      // If query failed do exhaustive search
+      if (closest < 0) {
+        closest = g->exhaustive_query(q);
+      }
+    }
+  }
+  
+
   // Parallel query on preprocessed grid
   template<typename Coord_T>
-  void Query(Grid_T<Coord_T>* g, Point_Vector<Coord_T>* q, thrust::host_vector<int> *closest) {
+  void Query(Grid_T<Coord_T>* g, Point_Vector<Coord_T>* q, thrust::host_vector<int>* closest) {
     // Typedefs derived from Grid class
     typedef typename Grid_T<Coord_T>::Coord_Tuple Coord_Tuple;
     typedef typename Grid_T<Coord_T>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
-
+    
     // Initialize vector of indices
     const int nqpts(q->get_size());
     thrust::device_vector<int> qindices(nqpts);
@@ -255,7 +279,7 @@ namespace nearpt3 {
     ZipItr index_split = thrust::partition(index_begin, index_end, greater_zero);
     // Index of where the partition was split
     int split = index_split - index_begin;
-    
+
     #ifdef DEBUG
     cout << "Partition: [";
     thrust::copy(qcells.begin(), qcells.end(), ostream_iterator<int>(cout, ", "));
@@ -286,7 +310,7 @@ namespace nearpt3 {
     #ifdef STATS
     g->Num_Slow_Queries = nqpts - split;
     #endif
-    
+
     #ifdef DEBUG
     cout << "Slow on (" << split << ", " << nqpts << ")" << endl;
     cout << "Slow Query Results: [";
@@ -314,7 +338,7 @@ namespace nearpt3 {
     #ifdef STATS
     g->Num_Exhaustive_Queries = nqpts - split;
     #endif
-    
+
     #ifdef DEBUG
     cout << "Exhaustive on (" << split << ", " << nqpts << ")" << endl;
     cout << "Exhaustive Query Results: [";
@@ -323,7 +347,7 @@ namespace nearpt3 {
     #endif
 
     thrust::sort_by_key(qindices.begin(), qindices.end(), qcells.begin());
-    
+
     #ifdef DEBUG
     cout << "Resorted Query results: [";
     thrust::copy(qcells.begin(), qcells.end(), ostream_iterator<int>(cout, ", "));

@@ -8,6 +8,7 @@
 
 namespace nearpt3 {
 
+  typedef thrust::tuple<double, double, double> Double_Tuple;
   
   // clamp_USI     Convert to an unsigned short int while clamping
   template<typename T> __host__ __device__
@@ -56,11 +57,11 @@ namespace nearpt3 {
   struct cell_containing_point_functor : public thrust::unary_function<Coord_Tuple, Cell3>
   {
     double r_cell;
-    Coord_Tuple d_cell;
+    Double_Tuple d_cell;
 
     cell_containing_point_functor() : r_cell(-1), d_cell(thrust::make_tuple(-1, -1, -1)) {}
 
-    cell_containing_point_functor(double r_cell, Coord_Tuple d_cell)
+    cell_containing_point_functor(double r_cell, Double_Tuple d_cell)
       : r_cell(r_cell), d_cell(d_cell) {}
 
     __host__ __device__
@@ -367,6 +368,19 @@ namespace nearpt3 {
     __host__ __device__
     bool operator()(const T& a) const {
       return thrust::get<0>(a) > b;
+    }
+  };
+
+  template<typename T>
+  struct less_functor: public thrust::unary_function<T, bool>
+  {
+    T b;
+
+    less_functor(T b) : b(b) {}
+
+    __host__ __device__
+    bool operator()(const T& a) const {
+      return a < b;
     }
   };
 };

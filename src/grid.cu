@@ -21,7 +21,7 @@ namespace nearpt3 {
     int ng;
     int ng3;
     double r_cell;
-    Coord_Tuple d_cell;
+    Double_Tuple d_cell;
     int nfixpts;
     Point_Vector<Coord_T>* pts;
     thrust::device_vector<int> cells;
