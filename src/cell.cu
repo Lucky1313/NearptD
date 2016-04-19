@@ -4,10 +4,11 @@
 
 namespace nearpt3 {
 
-  typedef short int Cell_Index_T;
   template<size_t Dim>
   class Cell {
   public:
+    typedef short int Cell_Index_T;
+    
     Cell_Index_T c[Dim];
 
     __host__ __device__

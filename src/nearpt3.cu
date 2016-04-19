@@ -41,33 +41,13 @@ namespace nearpt3 {
   const int ncellsearchorder = 
     sizeof(nearpt3::cellsearchorder) / sizeof(nearpt3::cellsearchorder[0])/4;
 
-  template<typename Coord_T>
-  struct scale : public thrust::binary_function<Coord_T, Coord_T, double> {
-    const int ng;
-    scale(int ng) : ng(ng) {}
-    
-    double operator()(const Coord_T& lo, const Coord_T& hi) {
-      return 0.99 * ng / static_cast<double>(hi - lo);
-    }
-  };
-
-  template<typename Coord_T>
-  struct cell_dim : public thrust::binary_function<Coord_T, Coord_T, double> {
-    const int ng;
-    const double r_cell;
-    cell_dim(int ng, double r_cell) : ng(ng), r_cell(r_cell) {}
-
-    double operator()(const Coord_T& lo, const Coord_T& hi) {
-      return 0.5 * ((ng - 1) - r_cell * (lo + hi));
-    }
-  };
-
   // Process all fixed points into a uniform grid
   template<typename Coord_T, int Dim> Grid_T<Coord_T, Dim>*
   Preprocess(const int nfixpts, Point_Vector<Coord_T, Dim>* pts) {
     // Typedefs derived from Grid class
     typedef typename Grid_T<Coord_T, Dim>::Coord_Tuple Coord_Tuple;
     typedef typename Grid_T<Coord_T, Dim>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
+    typedef typename Grid_T<Coord_T, Dim>::Double_Tuple Double_Tuple;
     
     Grid_T<Coord_T, Dim> *g;
     g = new Grid_T<Coord_T, Dim>;
@@ -98,21 +78,21 @@ namespace nearpt3 {
     #endif
 
     scale<Coord_T> sc(ng);
-    transform_functor<Coord_Tuple, Coord_Tuple, Double_Tuple, scale<Coord_T>, Dim> make_scale;
+    tuple_binary_apply<Coord_Tuple, Coord_Tuple, Double_Tuple, scale<Coord_T>, Dim> make_scale;
     Double_Tuple s = make_scale(lo, hi, sc);
     // Double_Tuple s(thrust::make_tuple(0.99 * ng / static_cast<double>(thrust::get<0>(hi) - thrust::get<0>(lo)),
     //                                   0.99 * ng / static_cast<double>(thrust::get<1>(hi) - thrust::get<1>(lo)),
     //                                   0.99 * ng / static_cast<double>(thrust::get<2>(hi) - thrust::get<2>(lo))));
 
     thrust::minimum<double> min;
-    reduce_functor<Double_Tuple, double, thrust::minimum<double>, Dim> minimum;
+    tuple_reduce<Double_Tuple, double, thrust::minimum<double>, Dim> minimum;
     //g->r_cell = min(min(thrust::get<0>(s), thrust::get<1>(s)), thrust::get<2>(s));
     g->r_cell = minimum(s, min);
     // g->d_cell = thrust::make_tuple(((ng-1)-(thrust::get<0>(lo)+thrust::get<0>(hi))*g->r_cell) * 0.5,
     //                                ((ng-1)-(thrust::get<1>(lo)+thrust::get<1>(hi))*g->r_cell) * 0.5,
     //                                ((ng-1)-(thrust::get<2>(lo)+thrust::get<2>(hi))*g->r_cell) * 0.5);
     cell_dim<Coord_T> cd(ng, g->r_cell);
-    transform_functor<Coord_Tuple, Coord_Tuple, Double_Tuple, cell_dim<Coord_T>, Dim> make_cell_dim;
+    tuple_binary_apply<Coord_Tuple, Coord_Tuple, Double_Tuple, cell_dim<Coord_T>, Dim> make_cell_dim;
     g->d_cell = make_cell_dim(lo, hi, cd);
     
     // Create device vectors (Must be before functors)
@@ -123,25 +103,25 @@ namespace nearpt3 {
     g->cellsearch = thrust::device_vector<int>(cellsearchorder, cellsearchorder+ncellsearchorder*4);
 
     // Define grid functors
-    g->check_cell = check_cell_functor(g->ng);
-    g->clip_cell = clip_cell_functor(g->ng);
-    g->cell_containing_point = cell_containing_point_functor<Coord_Tuple>(g->r_cell, g->d_cell);
-    g->cell_to_id = cell_to_id_functor(g->ng);
-    g->point_to_id = point_to_id_functor<Coord_Tuple>(g->cell_containing_point, g->cell_to_id);
+    g->check_cell = check_cell_functor<Dim>(g->ng);
+    g->clip_cell = clip_cell_functor<Dim>(g->ng);
+    g->cell_containing_point = cell_containing_point_functor<Coord_T, Dim>(g->r_cell, g->d_cell);
+    g->cell_to_id = cell_to_id_functor<Dim>(g->ng);
+    g->point_to_id = point_to_id_functor<Coord_T, Dim>(g->cell_containing_point, g->cell_to_id);
     g->num_points_in_cell_id = num_points_in_cell_id_functor(g->base.data());
-    g->query_cell = query_cell_functor<Coord_T>(g->num_points_in_cell_id,
-                                                g->point_to_id,
-                                                g->base.data(),
-                                                g->cells.data(),
-                                                pts->get_ptrs());
-    g->fast_query = fast_query_functor<Coord_T>(g->clip_cell,
-                                                g->cell_containing_point,
-                                                g->query_cell);
-    g->slow_query = slow_query_functor<Coord_T>(ncellsearchorder,
-                                                g->cellsearch.data(),
-                                                g->check_cell,
-                                                g->cell_containing_point,
-                                                g->query_cell);
+    g->query_cell = query_cell_functor<Coord_T, Dim>(g->num_points_in_cell_id,
+                                                     g->point_to_id,
+                                                     g->base.data(),
+                                                     g->cells.data(),
+                                                     pts->get_ptrs());
+    g->fast_query = fast_query_functor<Coord_T, Dim>(g->clip_cell,
+                                                     g->cell_containing_point,
+                                                     g->query_cell);
+    g->slow_query = slow_query_functor<Coord_T, Dim>(ncellsearchorder,
+                                                     g->cellsearch.data(),
+                                                     g->check_cell,
+                                                     g->cell_containing_point,
+                                                     g->query_cell);
     
     #ifdef DEBUG
     cout << "Grid info:";
@@ -187,7 +167,7 @@ namespace nearpt3 {
     }
 
     // Transform iterator to compute point ids 
-    typedef thrust::transform_iterator<point_to_id_functor<Coord_Tuple>, Coord_Iterator_Tuple> IdItr;
+    typedef thrust::transform_iterator<point_to_id_functor<Coord_T, Dim>, Coord_Iterator_Tuple> IdItr;
     IdItr id_begin(pts->begin(), g->point_to_id);
     IdItr id_end(pts->end(), g->point_to_id);
 

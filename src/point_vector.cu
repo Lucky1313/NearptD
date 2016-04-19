@@ -6,7 +6,7 @@
 #include <thrust/extrema.h>
 
 #include "strided_range.cu"
-#include "tuple_utility.h"
+#include "tuple_utility.cu"
 
 namespace nearpt3 {
 

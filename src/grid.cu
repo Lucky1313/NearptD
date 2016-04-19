@@ -6,10 +6,398 @@
 
 #include "point_vector.cu"
 #include "functors.cu"
+#include "tuple_utility.cu"
 
 using namespace std;
 
 namespace nearpt3 {
+
+  // Check if this is a legal cell.
+  template<size_t Dim>
+  struct check_cell_functor
+  {
+    int ng;
+
+    check_cell_functor() : ng(-1) {}
+    check_cell_functor(int ng) : ng(ng) {}
+
+    __host__ __device__
+    bool operator()(const Cell<3>& a) const {
+      for (int i=0; i<Dim; ++i) {
+        if (a[i] < 0 || a[i] >= ng) return false;
+      }
+      return true;
+    }
+  };
+  
+  // clip is needed because roundoff errors may cause a number to be slightly outside the legal range
+  template<size_t Dim>
+  struct clip_cell_functor
+  {
+    int ng;
+
+    clip_cell_functor() : ng(-1) {}
+    clip_cell_functor(int ng) : ng(ng) {}
+
+    __host__ __device__
+    void operator()(Cell<Dim>& a) {
+      for (size_t i=0; i<Dim; ++i) {
+        if (a[i] < 0) a[i] = 0;
+        if (a[i] >= ng) a[i] = ng-1;
+      }
+    }
+  };
+
+  template<typename Coord_T, size_t Dim>
+  struct cell_containing_point_functor
+    : public thrust::unary_function<typename ntuple<Coord_T, Dim>::tuple, Cell<Dim> >
+  {
+    typedef typename ntuple<double, Dim>::tuple Double_Tuple;
+    typedef typename ntuple<Coord_T, Dim>::tuple Coord_Tuple;
+    //typedef typename ntuple<short int, Dim>::tuple Short_Tuple;
+    double r_cell;
+    Double_Tuple d_cell;
+    // Only used for making tuple
+    ntuple<double, Dim> Double_Ntuple;
+    coord_to_short<Coord_T> cts;
+    //tuple_binary_apply<Coord_Tuple, Double_Tuple, Short_Tuple, coord_to_short<Coord_T>, Dim> make_cell;
+
+    cell_containing_point_functor() : r_cell(-1) {
+      double d[Dim];
+      for (int i=0; i<Dim; ++i) {d[i] = -1;}
+      d_cell = Double_Ntuple.make(d);
+    }
+
+    cell_containing_point_functor(double r_cell, Double_Tuple d_cell)
+      : r_cell(r_cell), d_cell(d_cell) {
+      //cts = coord_to_short<Coord_T>(r_cell);
+    }
+
+    __host__ __device__
+    Cell<Dim> operator()(const Coord_Tuple& a) const {
+      short int i[Dim];
+      i[0] = static_cast<short int>(static_cast<double>(thrust::get<0>(a))*r_cell+thrust::get<0>(d_cell));
+      i[1] = static_cast<short int>(static_cast<double>(thrust::get<1>(a))*r_cell+thrust::get<1>(d_cell));
+      i[2] = static_cast<short int>(static_cast<double>(thrust::get<2>(a))*r_cell+thrust::get<2>(d_cell));
+      Cell<Dim> c(i);
+      //Cell<Dim> c(make_cell(a, d_cell, cts));
+      return c;
+    }
+  };
+
+  template<size_t Dim>
+  struct cell_to_id_functor : public thrust::unary_function<Cell<Dim>, int>
+  {
+    int ng;
+
+    cell_to_id_functor() : ng(-1) {}
+    cell_to_id_functor(int ng) : ng(ng) {}
+  
+    __host__ __device__
+    int operator()(const Cell<Dim>& c) const {
+      int id = 0;
+      for (int i=0; i<Dim; ++i) {
+        if (c[i] < 0 || c[i] >= ng) return -1;
+        id = static_cast<int>(c[i]) + ng * id;
+      }
+      return id;
+    }
+  };
+  
+  template<typename Coord_T, size_t Dim>
+  struct point_to_id_functor : public thrust::unary_function<typename ntuple<Coord_T, Dim>::tuple, int>
+  {
+    typedef typename ntuple<Coord_T, Dim>::tuple Coord_Tuple;
+    
+    cell_containing_point_functor<Coord_T, Dim> cell_containing_point;
+    cell_to_id_functor<Dim> cell_to_id;
+
+    point_to_id_functor() : cell_containing_point(cell_containing_point_functor<Coord_T, Dim>()),
+                            cell_to_id(cell_to_id_functor<Dim>()) {}
+
+    point_to_id_functor(cell_containing_point_functor<Coord_T, Dim> cell_containing_point,
+                        cell_to_id_functor<Dim> cell_to_id)
+      : cell_containing_point(cell_containing_point), cell_to_id(cell_to_id) {}
+
+    __host__ __device__
+    int operator()(const Coord_Tuple& a) const {
+      return cell_to_id(cell_containing_point(a));
+    }
+  };
+
+  struct num_points_in_cell_id_functor : public thrust::unary_function<int, int>
+  {
+    thrust::device_ptr<int> base;
+
+    num_points_in_cell_id_functor() : base(thrust::device_ptr<int>()) {}
+    num_points_in_cell_id_functor(thrust::device_ptr<int> base) : base(base) {}
+
+    __host__ __device__
+    int operator()(const int& id) const {
+      if (id < 0) return 0;
+      return base[id+1] - base[id];
+    }
+  };
+
+
+  template<typename Coord_T, size_t Dim>
+  struct query_cell_functor
+  {
+    typedef typename ntuple<Coord_T, Dim>::tuple Coord_Tuple;
+    typedef thrust::device_ptr<Coord_T> Coord_Ptr;
+    typedef typename ntuple<Coord_Ptr, Dim>::tuple Coord_Ptr_Tuple;
+    typedef typename ntuple<int, Dim>::tuple Int_Tuple;
+    ntuple<Coord_Ptr, Dim> Coord_Ptr_Ntuple;
+    ntuple<int, Dim> Int_Ntuple;
+    get_point<Coord_Ptr, Coord_T> point;
+    tuple_binary_apply<Coord_Ptr_Tuple, Int_Tuple,
+      Coord_Tuple, get_point<Coord_Ptr, Coord_T>, Dim> pget;
+    
+    num_points_in_cell_id_functor num_points_in_cell_id;
+    point_to_id_functor<Coord_T, Dim> point_to_id;
+    thrust::device_ptr<int> base;
+    thrust::device_ptr<int> cells;
+    Coord_Ptr_Tuple pts;
+
+    query_cell_functor() : num_points_in_cell_id(num_points_in_cell_id_functor()),
+                           point_to_id(point_to_id_functor<Coord_T, Dim>()),
+                           base(thrust::device_ptr<int>()),
+                           cells(thrust::device_ptr<int>()) {
+      Coord_Ptr ptrs[Dim];
+      for (size_t i=0; i<Dim; ++i) {ptrs[i] = Coord_Ptr();}
+      pts = Coord_Ptr_Ntuple.make(ptrs);
+    }
+    
+    query_cell_functor(num_points_in_cell_id_functor num_points_in_cell_id,
+                       point_to_id_functor<Coord_T, Dim> point_to_id,
+                       thrust::device_ptr<int> base,
+                       thrust::device_ptr<int> cells,
+                       Coord_Ptr_Tuple pts)
+      : num_points_in_cell_id(num_points_in_cell_id), point_to_id(point_to_id),
+        base(base), cells(cells), pts(pts) {}
+
+    __host__ __device__
+    Coord_Tuple point_at(int i) {
+      int id[Dim];
+      for (int d=0; d<Dim; ++d) {id[d] = i;}
+      Int_Tuple id_tup = Int_Ntuple.make(id);
+      return pget(pts, id_tup, point);
+    }
+    
+    __host__ __device__
+    void operator()(const int &cell_id, const Coord_Tuple& q,
+                    int &closest, double &dist2) {
+      const int num_points(num_points_in_cell_id(cell_id));
+      if (num_points <= 0) {
+        closest = -1;
+        dist2 = -1;
+        return;
+      }
+      
+      const int queryint(point_to_id(q));
+      distance2_functor<Coord_T, Dim> distance2(q);
+      int i = base[cell_id];
+      closest = cells[i];
+      dist2 = distance2(point_at(closest));
+      while (i < base[cell_id+1]) {
+        const double d2 = distance2(point_at(cells[i]));
+        if (d2 < dist2 || (d2 == dist2 && cells[i] < closest)) {
+          dist2 = d2;
+          closest = cells[i];
+        }
+        ++i;
+      }
+    }
+  };
+
+  template<typename Coord_T, size_t Dim>
+  struct fast_query_functor : public thrust::unary_function<typename ntuple<Coord_T, Dim>::tuple, int>
+  {
+    typedef typename ntuple<Coord_T, Dim>::tuple Coord_Tuple;
+    tuple_unary_apply<Coord_Tuple, Coord_Tuple, near_cell<Coord_T>, Dim> dc;
+    
+    clip_cell_functor<Dim> clip_cell;
+    cell_containing_point_functor<Coord_T, Dim> cell_containing_point;
+    query_cell_functor<Coord_T, Dim> query_cell;
+
+    fast_query_functor() : clip_cell(clip_cell_functor<Dim>()),
+                           cell_containing_point(cell_containing_point_functor<Coord_T, Dim>()),
+                           query_cell(query_cell_functor<Coord_T, Dim>()) {}
+
+    fast_query_functor(clip_cell_functor<Dim> clip_cell,
+                       cell_containing_point_functor<Coord_T, Dim> cell_containing_point,
+                       query_cell_functor<Coord_T, Dim> query_cell)
+      : clip_cell(clip_cell), cell_containing_point(cell_containing_point), query_cell(query_cell) {}
+    
+    __host__ __device__
+    int operator()(const Coord_Tuple& q) {
+      int queryint = query_cell.point_to_id(q);
+      int closestpt = -1;
+      double dist2 = -1;
+      query_cell(queryint, q, closestpt, dist2);
+      const double distf = sqrt(dist2) * 1.00001;
+      // Coord_Tuple lopt(thrust::make_tuple(clamp_USI(static_cast<double>(thrust::get<0>(q)) - distf),
+      //                                     clamp_USI(static_cast<double>(thrust::get<1>(q)) - distf),
+      //                                     clamp_USI(static_cast<double>(thrust::get<2>(q)) - distf)));
+      // Coord_Tuple hipt(thrust::make_tuple(clamp_USI(static_cast<double>(thrust::get<0>(q)) + distf + 1.0),
+      //                                     clamp_USI(static_cast<double>(thrust::get<1>(q)) + distf + 1.0),
+      //                                     clamp_USI(static_cast<double>(thrust::get<2>(q)) + distf + 1.0)));
+      near_cell<Coord_T> near_cell_lo(distf, true);
+      near_cell<Coord_T> near_cell_hi(distf, false);
+      
+      Coord_Tuple lopt = dc(q, near_cell_lo);
+      Coord_Tuple hipt = dc(q, near_cell_hi);
+      
+      Cell<Dim> locell(cell_containing_point(lopt));
+      Cell<Dim> hicell(cell_containing_point(hipt));
+
+      clip_cell(locell);
+      clip_cell(hicell);
+
+      Cell<Dim> qcell(cell_containing_point(q));
+      if (locell == qcell && hicell == qcell) {
+        return closestpt;
+      }
+      int close2 = -1;
+      double d2 = -1;
+      // for (Coord_T x=locell[0]; x<=hicell[0]; ++x) {
+      //   for (Coord_T y=locell[1]; y<=hicell[1]; ++y) {
+      //     for (Coord_T z=locell[2]; z<=hicell[2]; ++z) {
+      //       queryint = query_cell.point_to_id.cell_to_id(Cell<Dim>(x, y, z));
+      //       query_cell(queryint, q, close2, d2);
+      //       if (close2 != -1 && (d2 < dist2 || (d2 == dist2 && close2 < closestpt))) {
+      //         closestpt = close2;
+      //         dist2 = d2;
+      //       }
+      //     }
+      //   }
+      // }
+      // Nested for loop traversal, modified from this code:
+      // http://stackoverflow.com/questions/18732974/c-dynamic-number-of-nested-for-loops-without-recursion
+      short int coords[Dim];
+      for (size_t i=0; i<Dim; ++i) {coords[i] = locell[i];}
+      size_t index = 0;
+      bool done = false;
+      while (!done) {
+        queryint = query_cell.point_to_id.cell_to_id(Cell<Dim>(coords));
+        query_cell(queryint, q, close2, d2);
+        if (close2 != -1 && (d2 < dist2 || (d2 == dist2 && close2 < closestpt))) {
+          closestpt = close2;
+          dist2 = d2;
+        }
+        coords[0]++;
+
+        while (coords[index] == hicell[index]) {
+          if (index != Dim - 1) {
+            coords[index] = locell[index];
+            index++;
+            coords[index]++;
+          }
+          else {
+            done = true;
+          }
+        }
+        index = 0;
+      }
+
+      return closestpt;
+    }
+  };
+
+  template<typename Coord_T, size_t Dim>
+  struct slow_query_functor : public thrust::unary_function<typename ntuple<Coord_T, Dim>::tuple, int>
+  {
+    typedef typename ntuple<Coord_T, Dim>::tuple Coord_Tuple;
+
+    int ncellsearch;
+    thrust::device_ptr<int> cellsearch;
+
+    check_cell_functor<Dim> check_cell;
+    cell_containing_point_functor<Coord_T, Dim> cell_containing_point;
+    query_cell_functor<Coord_T, Dim> query_cell;
+
+    slow_query_functor() : ncellsearch(0),
+                           cellsearch(thrust::device_ptr<int>()),
+                           check_cell(check_cell_functor<Dim>()),
+                           cell_containing_point(cell_containing_point_functor<Coord_T, Dim>()),
+                           query_cell(query_cell_functor<Coord_T, Dim>()) {}
+
+    slow_query_functor(int ncellsearch,
+                       thrust::device_ptr<int> cellsearch,
+                       check_cell_functor<Dim> check_cell,
+                       cell_containing_point_functor<Coord_T, Dim> cell_containing_point,
+                       query_cell_functor<Coord_T, Dim> query_cell)
+      : ncellsearch(ncellsearch), cellsearch(cellsearch), check_cell(check_cell),
+        cell_containing_point(cell_containing_point), query_cell(query_cell) {}
+
+    __host__ __device__
+    int operator()(const Coord_Tuple& q) {
+      const int sign3[8][3] = {{1,1,1},{1,1,-1},{1,-1,1},{1,-1,-1},
+                               {-1,1,1},{-1,1,-1},{-1,-1,1},{-1,-1,-1}};
+      const int perm3[6][3] = {{0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}};
+
+      Cell<3> qcell = cell_containing_point(q);
+      int queryint = query_cell.point_to_id.cell_to_id(qcell);
+      int closestpt = -1;
+      double dist2 = -1;
+
+      int nstop(ncellsearch);
+      bool found(false);
+
+      for (int isort=0; isort<nstop; ++isort) {
+        int close2;
+        double d2;
+        Cell<3> s (cellsearch[isort*4], cellsearch[isort*4+1], cellsearch[isort*4+2]);
+
+        for (int isign=0; isign<8; ++isign) {
+          if (s[0]==0 && sign3[isign][0]== -1) continue;
+          if (s[1]==0 && sign3[isign][1]== -1) continue;
+          if (s[2]==0 && sign3[isign][2]== -1) continue;
+
+          const Cell<3> s2(s*sign3[isign]);
+
+          for (int iperm=0; iperm<6; ++iperm) {
+            switch (iperm) {
+            case 1:
+              if (s[1]==s[2]) continue;
+              break;
+            case 2: 
+              if (s[0]==s[1]) continue;
+              break;
+            case 3:
+            case 4:
+              if (s[0]==s[1] && s[0]==s[2]) continue;
+              break;
+            case 5:
+              if (s[0]==s[2]) continue;
+              break;
+            }
+            const Cell<3> s3(s2[perm3[iperm][0]], s2[perm3[iperm][1]], s2[perm3[iperm][2]]);
+            const Cell<3> c2(qcell+s3);
+            if (!check_cell(c2)) continue;
+            int cell_id(query_cell.point_to_id.cell_to_id(c2));
+            query_cell(cell_id, q, close2, d2);
+            if (close2 < 0) continue;
+
+            if (dist2 == -1 || d2 < dist2 || (d2 == dist2 && close2 < closestpt)) {
+              dist2 = d2;
+              closestpt = close2;
+              if (!found) {
+                found = true;
+                nstop = cellsearch[isort*4+3];
+                if (nstop >= ncellsearch) {
+                  iperm = 6;
+                  isign = 8;
+                  isort = nstop;
+                }
+              }
+            }
+          }
+        }
+      }
+      return closestpt;
+    }
+  };
 
   template<typename Coord_T, size_t Dim>
   class Grid_T {
@@ -17,6 +405,7 @@ namespace nearpt3 {
     // Typedefs from Point_Vector class
     typedef typename Point_Vector<Coord_T, Dim>::Coord_Tuple Coord_Tuple;
     typedef typename Point_Vector<Coord_T, Dim>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
+    typedef typename ntuple<double, Dim>::tuple Double_Tuple;
 
     int ng;
     int ng3;
@@ -46,19 +435,19 @@ namespace nearpt3 {
     #endif
 
     // Functors
-    check_cell_functor check_cell;
-    clip_cell_functor clip_cell;
-    cell_containing_point_functor<Coord_Tuple> cell_containing_point;
-    cell_to_id_functor cell_to_id;
-    point_to_id_functor<Coord_Tuple> point_to_id;
+    check_cell_functor<Dim> check_cell;
+    clip_cell_functor<Dim> clip_cell;
+    cell_containing_point_functor<Coord_T, Dim> cell_containing_point;
+    cell_to_id_functor<Dim> cell_to_id;
+    point_to_id_functor<Coord_T, Dim> point_to_id;
     num_points_in_cell_id_functor num_points_in_cell_id;
-    query_cell_functor<Coord_T> query_cell;
-    fast_query_functor<Coord_T> fast_query;
-    slow_query_functor<Coord_T> slow_query;
+    query_cell_functor<Coord_T, Dim> query_cell;
+    fast_query_functor<Coord_T, Dim> fast_query;
+    slow_query_functor<Coord_T, Dim> slow_query;
 
     int exhaustive_query(const Coord_Tuple& q) {
-      typedef thrust::transform_iterator<distance2_functor<Coord_Tuple>, Coord_Iterator_Tuple> dist2_itr;
-      distance2_functor<Coord_Tuple> distance2(q);
+      typedef thrust::transform_iterator<distance2_functor<Coord_T, Dim>, Coord_Iterator_Tuple> dist2_itr;
+      distance2_functor<Coord_T, Dim> distance2(q);
       dist2_itr begin(pts->begin(), distance2);
       dist2_itr end(pts->end(), distance2);
       dist2_itr result = thrust::min_element(begin, end);
