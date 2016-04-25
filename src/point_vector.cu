@@ -22,9 +22,10 @@ namespace nearpt3 {
     
     // Typedefs for external use
     typedef typename ntuple<Coord_T, Dim>::tuple Coord_Tuple;
-    typedef thrust::zip_iterator<Coord_Itr_Tuple> Coord_Iterator_Tuple;
+    typedef thrust::zip_iterator<Coord_Itr_Tuple> Coord_Tuple_Iterator;
     typedef typename ntuple<Coord_Ptr, Dim>::tuple Coord_Ptr_Tuple;
 
+    
     Point_Vector(const int npts, thrust::host_vector<Coord_T> pts)
       : npts(npts) {
       typedef typename thrust::host_vector<Coord_T>::iterator Host_Itr;
@@ -42,12 +43,12 @@ namespace nearpt3 {
     }
     
     // Taken from zip iterator example
-    Coord_Iterator_Tuple begin() {
-      return thrust::make_zip_iterator(Coord_Itr_Ntuple.make(begins));
+    Coord_Tuple_Iterator begin() {
+      return thrust::make_zip_iterator(Coord_Itr_Ntuple.make_tuple(begins));
     }
 
-    Coord_Iterator_Tuple end() {
-      return thrust::make_zip_iterator(Coord_Itr_Ntuple.make(ends));
+    Coord_Tuple_Iterator end() {
+      return thrust::make_zip_iterator(Coord_Itr_Ntuple.make_tuple(ends));
     }
 
     // Return pair of minimum and maximum in each dimension
@@ -60,8 +61,8 @@ namespace nearpt3 {
         los[i] = *thrust::get<0>(pair);
         his[i] = *thrust::get<1>(pair);
       }
-      Coord_Tuple lo(Coord_Ntuple.make(los));
-      Coord_Tuple hi(Coord_Ntuple.make(his));
+      Coord_Tuple lo(Coord_Ntuple.make_tuple(los));
+      Coord_Tuple hi(Coord_Ntuple.make_tuple(his));
       return thrust::pair<Coord_Tuple, Coord_Tuple>(lo, hi);
     }
 
@@ -70,14 +71,14 @@ namespace nearpt3 {
       for (size_t i=0; i<Dim; ++i) {
         ptrs[i] = vectors[i].data();
       }
-      return Coord_Ptr_Ntuple.make(ptrs);
+      return Coord_Ptr_Ntuple.make_tuple(ptrs);
     }
     
     Coord_Tuple operator[] (int i) {
       for (size_t d=0; d<Dim; ++d) {
         c[d] = vectors[d][i];
       }
-      return Coord_Ntuple.make(c);
+      return Coord_Ntuple.make_tuple(c);
     }
 
   private:

@@ -24,6 +24,7 @@
 #include "grid.cu"
 #include "functors.cu"
 #include "utils.cpp"
+#include "tuple_utility.cu"
 
 using namespace std;
 
@@ -42,11 +43,12 @@ namespace nearpt3 {
     sizeof(nearpt3::cellsearchorder) / sizeof(nearpt3::cellsearchorder[0])/4;
 
   // Process all fixed points into a uniform grid
-  template<typename Coord_T, int Dim> Grid_T<Coord_T, Dim>*
+  template<typename Coord_T, int Dim>
+  Grid_T<Coord_T, Dim>*
   Preprocess(const int nfixpts, Point_Vector<Coord_T, Dim>* pts) {
     // Typedefs derived from Grid class
     typedef typename Grid_T<Coord_T, Dim>::Coord_Tuple Coord_Tuple;
-    typedef typename Grid_T<Coord_T, Dim>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
+    typedef typename Grid_T<Coord_T, Dim>::Coord_Tuple_Iterator Coord_Tuple_Iterator;
     typedef typename Grid_T<Coord_T, Dim>::Double_Tuple Double_Tuple;
     
     Grid_T<Coord_T, Dim> *g;
@@ -100,8 +102,9 @@ namespace nearpt3 {
     g->cells = thrust::device_vector<int>(g->nfixpts);
 
     // Copy cell search order to device memory
-    g->cellsearch = thrust::device_vector<int>(cellsearchorder, cellsearchorder+ncellsearchorder*4);
-
+    //g->cellsearch = thrust::device_vector<int>(cellsearchorder, cellsearchorder+ncellsearchorder*4);
+    g->cellsearch = cellsearchcreate<Dim>();
+    
     // Define grid functors
     g->check_cell = check_cell_functor<Dim>(g->ng);
     g->clip_cell = clip_cell_functor<Dim>(g->ng);
@@ -117,8 +120,9 @@ namespace nearpt3 {
     g->fast_query = fast_query_functor<Coord_T, Dim>(g->clip_cell,
                                                      g->cell_containing_point,
                                                      g->query_cell);
-    g->slow_query = slow_query_functor<Coord_T, Dim>(ncellsearchorder,
-                                                     g->cellsearch.data(),
+    g->slow_query = slow_query_functor<Coord_T, Dim>(g->cellsearch.size,
+                                                     g->cellsearch.cells->get_ptrs(),
+                                                     g->cellsearch.stop.data(),
                                                      g->check_cell,
                                                      g->cell_containing_point,
                                                      g->query_cell);
@@ -139,7 +143,7 @@ namespace nearpt3 {
     
     // Calculate cell id from point
     thrust::transform(pts->begin(), pts->end(), g->cells.begin(), g->point_to_id);
-    
+
     // Ensure no cells are -1 (outside range)
     if (thrust::find(g->cells.begin(), g->cells.end(), -1) != g->cells.end()) {
       throw "Bad cell";
@@ -167,7 +171,7 @@ namespace nearpt3 {
     }
 
     // Transform iterator to compute point ids 
-    typedef thrust::transform_iterator<point_to_id_functor<Coord_T, Dim>, Coord_Iterator_Tuple> IdItr;
+    typedef thrust::transform_iterator<point_to_id_functor<Coord_T, Dim>, Coord_Tuple_Iterator> IdItr;
     IdItr id_begin(pts->begin(), g->point_to_id);
     IdItr id_end(pts->end(), g->point_to_id);
 
@@ -227,8 +231,8 @@ namespace nearpt3 {
   }
 
   // Perform a single query
-  template<typename Coord_T>
-  void Query(Grid_T<Coord_T, 3>* g, thrust::tuple<Coord_T, Coord_T, Coord_T>& q, int& closest) {
+  template<typename Coord_T, size_t Dim>
+  void Query(Grid_T<Coord_T, Dim>* g, const typename ntuple<Coord_T, Dim>::tuple& q, int& closest) {
     // Get id of cell containing query
     const int queryint(g->point_to_id(q));
     // Get number of points in cell
@@ -250,12 +254,12 @@ namespace nearpt3 {
   
 
   // Parallel query on preprocessed grid
-  template<typename Coord_T>
-  void Query(Grid_T<Coord_T, 3>* g, Point_Vector<Coord_T, 3>* q, thrust::host_vector<int>* closest) {
+  template<typename Coord_T, size_t Dim>
+  void Query(Grid_T<Coord_T, Dim>* g, Point_Vector<Coord_T, Dim>* q, thrust::host_vector<int>* closest) {
     // Typedefs derived from Grid class
-    typedef typename Grid_T<Coord_T, 3>::Coord_Tuple Coord_Tuple;
-    typedef typename Grid_T<Coord_T, 3>::Coord_Iterator_Tuple Coord_Iterator_Tuple;
-    
+    typedef typename Grid_T<Coord_T, Dim>::Coord_Tuple Coord_Tuple;
+    typedef typename Grid_T<Coord_T, Dim>::Coord_Tuple_Iterator Coord_Tuple_Iterator;
+
     // Initialize vector of indices
     const int nqpts(q->get_size());
     thrust::device_vector<int> qindices(nqpts);
@@ -301,7 +305,7 @@ namespace nearpt3 {
     #endif
 
     // Permutation from indices to actual points
-    typedef thrust::permutation_iterator<Coord_Iterator_Tuple, IntItr> QueryItr;
+    typedef thrust::permutation_iterator<Coord_Tuple_Iterator, IntItr> QueryItr;
     QueryItr qbegin(q->begin(), qindices.begin());
     // Do fast case query on all query points that have points in the cell
     thrust::transform(qbegin, qbegin + split, qcells.begin(), g->fast_query);
@@ -318,6 +322,7 @@ namespace nearpt3 {
 
     // Slow case query on empty cell queries
     thrust::transform(qbegin + split, qbegin + nqpts, qcells.begin() + split, g->slow_query);
+
     #ifdef STATS
     g->Num_Slow_Queries = nqpts - split;
     #endif

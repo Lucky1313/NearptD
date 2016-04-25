@@ -2,12 +2,16 @@
 
 #include <iostream>
 
+#include "tuple_utility.cu"
+
 namespace nearpt3 {
 
   template<size_t Dim>
   class Cell {
   public:
     typedef short int Cell_Index_T;
+    typedef typename ntuple<Cell_Index_T, Dim>::tuple Cell_Tuple;
+    ntuple<Cell_Index_T, Dim> Cell_Ntuple;
     
     Cell_Index_T c[Dim];
 
@@ -19,11 +23,16 @@ namespace nearpt3 {
     }
 
     __host__ __device__
-    Cell(const Cell_Index_T x, const Cell_Index_T y, const Cell_Index_T z) {
-      c[0] = x;
-      c[1] = y;
-      c[2] = z;
+    Cell(const Cell_Tuple& a) {
+      Cell_Ntuple.make_array(a, c);
     }
+
+    // __host__ __device__
+    // Cell(const Cell_Index_T x, const Cell_Index_T y, const Cell_Index_T z) {
+    //   c[0] = x;
+    //   c[1] = y;
+    //   c[2] = z;
+    // }
 
     __host__ __device__
     Cell(const Cell<Dim> &a) {
@@ -70,8 +79,6 @@ namespace nearpt3 {
       }
       return true;
     }
-
-    //    const Cell3 operator*(const int *) const;
   };
 
   template<size_t Dim>

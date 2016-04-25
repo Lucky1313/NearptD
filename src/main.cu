@@ -55,7 +55,7 @@ int main(const int argc, const char* argv[]) {
     pstream.write(reinterpret_cast<char*>(&(qpts[i*3])), psize);
     pstream.write(reinterpret_cast<char*>(&(fixpts[closest[i]*3])), psize);
     #ifdef EXHAUSTIVE
-    int close2 = g->exhaustive_query((*q)[i]);
+    int close2 = g->exhaustive_query(q[i]);
     if (close2 != closest[i]) {
       cout << "ERROR: " << closest[i] << " != " << close2 << endl;
     }

@@ -13,63 +13,108 @@ namespace nearpt3 {
   struct ntuple<T, 1> {
     typedef thrust::tuple<T> tuple;
     __host__ __device__
-    tuple make(T* a) {return thrust::make_tuple(a[0]);}
+    tuple make_tuple(T* a) {return thrust::make_tuple(a[0]);}
+    __host__ __device__
+    void make_array(const tuple& a, T* b) {
+      b[0] = thrust::get<0>(a);
+    }
   };
 
   template<typename T>
   struct ntuple<T, 2> {
     typedef thrust::tuple<T, T> tuple;
     __host__ __device__
-    tuple make(T* a) {return thrust::make_tuple(a[0], a[1]);}
+    tuple make_tuple(T* a) {return thrust::make_tuple(a[0],a[1]);}
+    __host__ __device__
+    void make_array(const tuple& a, T* b) {
+      b[0] = thrust::get<0>(a); b[1] = thrust::get<1>(a);
+    }
   };
   
   template<typename T>
   struct ntuple<T, 3> {
     typedef thrust::tuple<T, T, T> tuple;
     __host__ __device__
-    tuple make(T* a) {return thrust::make_tuple(a[0], a[1], a[2]);}
+    tuple make_tuple(T* a) {return thrust::make_tuple(a[0],a[1],a[2]);}
+    __host__ __device__
+    void make_array(const tuple& a, T* b) {
+      b[0] = thrust::get<0>(a); b[1] = thrust::get<1>(a); b[2] = thrust::get<2>(a);
+    }
   };
 
   template<typename T>
   struct ntuple<T, 4> {
     typedef thrust::tuple<T, T, T, T> tuple;
     __host__ __device__
-    tuple make(T* a) {return thrust::make_tuple(a[0], a[1], a[2], a[3]);}
+    tuple make_tuple(T* a) {return thrust::make_tuple(a[0],a[1],a[2],a[3]);}
+    __host__ __device__
+    void make_array(const tuple& a, T* b) {
+      b[0] = thrust::get<0>(a); b[1] = thrust::get<1>(a); b[2] = thrust::get<2>(a);
+      b[3] = thrust::get<3>(a);
+    }
   };
 
   template<typename T>
   struct ntuple<T, 5> {
     typedef thrust::tuple<T, T, T, T, T> tuple;
     __host__ __device__
-    tuple make(T* a) {return thrust::make_tuple(a[0], a[1], a[2], a[3], a[4]);}
+    tuple make_tuple(T* a) {return thrust::make_tuple(a[0],a[1],a[2],a[3],a[4]);}
+    __host__ __device__
+    void make_array(const tuple& a, T* b) {
+      b[0] = thrust::get<0>(a); b[1] = thrust::get<1>(a); b[2] = thrust::get<2>(a);
+      b[3] = thrust::get<3>(a); b[4] = thrust::get<4>(a);
+    }
   };
 
   template<typename T>
   struct ntuple<T, 6> {
     typedef thrust::tuple<T, T, T, T, T, T> tuple;
     __host__ __device__
-    tuple make(T* a) {return thrust::make_tuple(a[0], a[1], a[2], a[3], a[4], a[5]);}
+    tuple make_tuple(T* a) {return thrust::make_tuple(a[0],a[1],a[2],a[3],a[4],a[5]);}
+    __host__ __device__
+    void make_array(const tuple& a, T* b) {
+      b[0] = thrust::get<0>(a); b[1] = thrust::get<1>(a); b[2] = thrust::get<2>(a);
+      b[3] = thrust::get<3>(a); b[4] = thrust::get<4>(a); b[5] = thrust::get<5>(a);
+    }
   };
 
   template<typename T>
   struct ntuple<T, 7> {
     typedef thrust::tuple<T, T, T, T, T, T, T> tuple;
     __host__ __device__
-    tuple make(T* a) {return thrust::make_tuple(a[0], a[1], a[2], a[3], a[4], a[5], a[6]);}
+    tuple make_tuple(T* a) {return thrust::make_tuple(a[0],a[1],a[2],a[3],a[4],a[5],a[6]);}
+    __host__ __device__
+    void make_array(const tuple& a, T* b) {
+      b[0] = thrust::get<0>(a); b[1] = thrust::get<1>(a); b[2] = thrust::get<2>(a);
+      b[3] = thrust::get<3>(a); b[4] = thrust::get<4>(a); b[5] = thrust::get<5>(a);
+      b[6] = thrust::get<6>(a);
+    }
   };
 
   template<typename T>
   struct ntuple<T, 8> {
     typedef thrust::tuple<T, T, T, T, T, T, T, T> tuple;
     __host__ __device__
-    tuple make(T* a) {return thrust::make_tuple(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);}
+    tuple make_tuple(T* a) {return thrust::make_tuple(a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7]);}
+    __host__ __device__
+    void make_array(const tuple& a, T* b) {
+      b[0] = thrust::get<0>(a); b[1] = thrust::get<1>(a); b[2] = thrust::get<2>(a);
+      b[3] = thrust::get<3>(a); b[4] = thrust::get<4>(a); b[5] = thrust::get<5>(a);
+      b[6] = thrust::get<6>(a); b[7] = thrust::get<7>(a);
+    }
   };
 
   template<typename T>
   struct ntuple<T, 9> {
     typedef thrust::tuple<T, T, T, T, T, T, T, T, T> tuple;
     __host__ __device__
-    tuple make(T* a) {return thrust::make_tuple(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]);}
+    tuple make_tuple(T* a) {return thrust::make_tuple(a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7],a[8]);}
+    __host__ __device__
+    void make_array(const tuple& a, T* b) {
+      b[0] = thrust::get<0>(a); b[1] = thrust::get<1>(a); b[2] = thrust::get<2>(a);
+      b[3] = thrust::get<3>(a); b[4] = thrust::get<4>(a); b[5] = thrust::get<5>(a);
+      b[6] = thrust::get<6>(a); b[7] = thrust::get<7>(a); b[8] = thrust::get<8>(a);
+    }
   };
 
   template<typename T1, typename T2, typename UnFunc, size_t N>
@@ -87,8 +132,7 @@ namespace nearpt3 {
   struct tuple_unary_apply<T1, T2, UnFunc, 2> {
     __host__ __device__
     T2 operator()(const T1&a, UnFunc func) {
-      return thrust::make_tuple(func(thrust::get<0>(a)),
-                                func(thrust::get<1>(a)));
+      return thrust::make_tuple(func(thrust::get<0>(a)),func(thrust::get<1>(a)));
     }
   };
   
@@ -96,8 +140,7 @@ namespace nearpt3 {
   struct tuple_unary_apply<T1, T2, UnFunc, 3> {
     __host__ __device__
     T2 operator()(const T1&a, UnFunc func) {
-      return thrust::make_tuple(func(thrust::get<0>(a)),
-                                func(thrust::get<1>(a)),
+      return thrust::make_tuple(func(thrust::get<0>(a)),func(thrust::get<1>(a)),
                                 func(thrust::get<2>(a)));
     }
   };
@@ -105,10 +148,8 @@ namespace nearpt3 {
   template<typename T1, typename T2, typename UnFunc>
   struct tuple_unary_apply<T1, T2, UnFunc, 4> {
     T2 operator()(const T1&a, UnFunc func) {
-      return thrust::make_tuple(func(thrust::get<0>(a)),
-                                func(thrust::get<1>(a)),
-                                func(thrust::get<2>(a)),
-                                func(thrust::get<3>(a)));
+      return thrust::make_tuple(func(thrust::get<0>(a)),func(thrust::get<1>(a)),
+                                func(thrust::get<2>(a)),func(thrust::get<3>(a)));
     }
   };
   
@@ -116,10 +157,8 @@ namespace nearpt3 {
   struct tuple_unary_apply<T1, T2, UnFunc, 5> {
     __host__ __device__
     T2 operator()(const T1&a, UnFunc func) {
-      return thrust::make_tuple(func(thrust::get<0>(a)),
-                                func(thrust::get<1>(a)),
-                                func(thrust::get<2>(a)),
-                                func(thrust::get<3>(a)),
+      return thrust::make_tuple(func(thrust::get<0>(a)),func(thrust::get<1>(a)),
+                                func(thrust::get<2>(a)),func(thrust::get<3>(a)),
                                 func(thrust::get<4>(a)));
     }
   };
@@ -128,12 +167,9 @@ namespace nearpt3 {
   struct tuple_unary_apply<T1, T2, UnFunc, 6> {
     __host__ __device__
     T2 operator()(const T1&a, UnFunc func) {
-      return thrust::make_tuple(func(thrust::get<0>(a)),
-                                func(thrust::get<1>(a)),
-                                func(thrust::get<2>(a)),
-                                func(thrust::get<3>(a)),
-                                func(thrust::get<4>(a)),
-                                func(thrust::get<5>(a)));
+      return thrust::make_tuple(func(thrust::get<0>(a)),func(thrust::get<1>(a)),
+                                func(thrust::get<2>(a)),func(thrust::get<3>(a)),
+                                func(thrust::get<4>(a)),func(thrust::get<5>(a)));
     }
   };
   
@@ -141,12 +177,9 @@ namespace nearpt3 {
   struct tuple_unary_apply<T1, T2, UnFunc, 7> {
     __host__ __device__
     T2 operator()(const T1&a, UnFunc func) {
-      return thrust::make_tuple(func(thrust::get<0>(a)),
-                                func(thrust::get<1>(a)),
-                                func(thrust::get<2>(a)),
-                                func(thrust::get<3>(a)),
-                                func(thrust::get<4>(a)),
-                                func(thrust::get<5>(a)),
+      return thrust::make_tuple(func(thrust::get<0>(a)),func(thrust::get<1>(a)),
+                                func(thrust::get<2>(a)),func(thrust::get<3>(a)),
+                                func(thrust::get<4>(a)),func(thrust::get<5>(a)),
                                 func(thrust::get<6>(a)));
     }
   };
@@ -155,14 +188,10 @@ namespace nearpt3 {
   struct tuple_unary_apply<T1, T2, UnFunc, 8> {
     __host__ __device__
     T2 operator()(const T1&a, UnFunc func) {
-      return thrust::make_tuple(func(thrust::get<0>(a)),
-                                func(thrust::get<1>(a)),
-                                func(thrust::get<2>(a)),
-                                func(thrust::get<3>(a)),
-                                func(thrust::get<4>(a)),
-                                func(thrust::get<5>(a)),
-                                func(thrust::get<6>(a)),
-                                func(thrust::get<7>(a)));
+      return thrust::make_tuple(func(thrust::get<0>(a)),func(thrust::get<1>(a)),
+                                func(thrust::get<2>(a)),func(thrust::get<3>(a)),
+                                func(thrust::get<4>(a)),func(thrust::get<5>(a)),
+                                func(thrust::get<6>(a)),func(thrust::get<7>(a)));
     }
   };
   
@@ -170,14 +199,10 @@ namespace nearpt3 {
   struct tuple_unary_apply<T1, T2, UnFunc, 9> {
     __host__ __device__
     T2 operator()(const T1&a, UnFunc func) {
-      return thrust::make_tuple(func(thrust::get<0>(a)),
-                                func(thrust::get<1>(a)),
-                                func(thrust::get<2>(a)),
-                                func(thrust::get<3>(a)),
-                                func(thrust::get<4>(a)),
-                                func(thrust::get<5>(a)),
-                                func(thrust::get<6>(a)),
-                                func(thrust::get<7>(a)),
+      return thrust::make_tuple(func(thrust::get<0>(a)),func(thrust::get<1>(a)),
+                                func(thrust::get<2>(a)),func(thrust::get<3>(a)),
+                                func(thrust::get<4>(a)),func(thrust::get<5>(a)),
+                                func(thrust::get<6>(a)),func(thrust::get<7>(a)),
                                 func(thrust::get<8>(a)));
     }
   };
@@ -204,7 +229,7 @@ namespace nearpt3 {
   template<typename T1, typename T2, typename T3, typename BinFunc>
   struct tuple_binary_apply<T1, T2, T3, BinFunc, 3> {
     __host__ __device__
-    T3 operator()(const T1&a, const T2& b, BinFunc func) {
+    T3 operator()(const T1&a, const T2& b, BinFunc func) const {
       return thrust::make_tuple(func(thrust::get<0>(a), thrust::get<0>(b)),
                                 func(thrust::get<1>(a), thrust::get<1>(b)),
                                 func(thrust::get<2>(a), thrust::get<2>(b)));
