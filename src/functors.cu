@@ -183,23 +183,33 @@ namespace nearpt3 {
   };
 
   // Construct array of permutation of indices
+  // using Heap's algorithm for iterative permutation
   template<size_t N>
   struct perm {
     int p[factorial<N>::value][N];
     perm() {
-      for (int i=0; i<factorial<N>::value; ++i) {
-        for (int j=0; j<N; ++j) {
-          if (i == 0) {
-            p[i][j] = j;
+      int id[N];
+      int c = 1;
+      int i = 1;
+      for (int j=0; j<N; ++j) {
+        p[0][j] = j;
+        id[j] = 0;
+      }
+      while (i < N) {
+        if (id[i] < i) {
+          int s = i % 2 * id[i];
+          p[c][i] = p[c-1][s];
+          p[c][s] = p[c-1][i];
+          for (int j=0; j<N; ++j) {
+            if (j!=i && j!=s) p[c][j] = p[c-1][j];
           }
-          else {
-            p[i][j] = p[i-1][j];
-          }
+          id[i]++;
+          i=1;
+          c++;
         }
-        if (i > 0) {
-          int t = p[i][i % N];
-          p[i][i % N] = p[i][(i-1) % N];
-          p[i][(i-1) % N] = t;
+        else {
+          id[i] = 0;
+          ++i;
         }
       }
     }
@@ -277,9 +287,29 @@ namespace nearpt3 {
       typedef thrust::transform_iterator<distance2_functor<Cell_Index_T, Dim>, Cell_Tuple_Iterator> dist2_itr;
       dist2_itr begin(cells->begin(), distplus2);
       dist2_itr end(cells->end(), distplus2);
+
+      // cout << "Dists: [";
+      // thrust::copy(dists.begin(), dists.begin()+50, ostream_iterator<double>(cout, ", "));
+      // cout << "]" << endl;
+      // cout << "Dists2: [";
+      // thrust::copy(begin, begin+50, ostream_iterator<double>(cout, ", "));
+      // cout << "]" << endl;
       
       thrust::upper_bound(dists.begin(), dists.end(),
                           begin, end, stop.begin());
+
+      thrust::host_vector<int> stoph(size);
+      thrust::copy(stop.begin(), stop.end(), stoph.begin());
+      int s = 0;
+      for (int i=0; i<size; ++i) {
+        if (stoph[i] > s) {
+          s = stoph[i];
+        }
+        else {
+          stoph[i] = s;
+        }
+      }
+      thrust::copy(stoph.begin(), stoph.end(), stop.begin());
       // thrust::adjacent_difference(stop.begin(), stop.end(),
       //                             stop.begin(), thrust::maximum<int>());
       

@@ -24,7 +24,7 @@ int main(const int argc, const char* argv[]) {
     nearpt3::ng_factor = 1.0;
   }
   
-  Print_Time("Init");
+  Timer timer = Timer();
 
   thrust::host_vector<Coord_T> fixpts;
   thrust::host_vector<Coord_T> qpts;
@@ -32,17 +32,17 @@ int main(const int argc, const char* argv[]) {
   const int nfixpts(read_points<Coord_T>(argv[2], csize, dim, &fixpts));
   const int nqpts(read_points<Coord_T>(argv[3], csize, dim, &qpts));
 
-  const double time_init = Print_Time("Initialization and reading fixed points");
+  const double time_init = timer("Initialization and reading fixed points");
   
   // Structure of arrays rather than Array of structures
   nearpt3::Point_Vector<Coord_T, dim> p(nfixpts, fixpts);
   nearpt3::Point_Vector<Coord_T, dim> q(nqpts, qpts);
 
-  const double time_copy = Print_Time("Copying points to GPU");
+  const double time_copy = timer("Copying points to GPU");
       
-  nearpt3::Grid_T<Coord_T, dim> *g = nearpt3::Preprocess<Coord_T, dim>(nfixpts, &p);
+  nearpt3::Grid_T<Coord_T, dim> *g = nearpt3::Preprocess<Coord_T>(nfixpts, &p);
 
-  const double time_fixed = Print_Time("Processing fixed points");
+  const double time_fixed = timer("Processing fixed points");
   
   ofstream pstream(argv[4], ios::binary);
   if (!pstream) { 
@@ -51,18 +51,25 @@ int main(const int argc, const char* argv[]) {
 
   thrust::host_vector<int> closest(nqpts, -1);
   nearpt3::Query<Coord_T>(g, &q, &closest);
+  // cout << g->slow_query(q[8626]) << endl;
+  // cout << g->exhaustive_query(q[8626]) << endl;
+  
+  // int close;
+  // thrust::tuple<Coord_T, Coord_T, Coord_T> q1 = q[14];
+  // nearpt3::Query<Coord_T>(g, q1, close);
+  // cout << close << "-" << g->exhaustive_query(q1) << endl;
   for (int i=0; i<nqpts; ++i) {
     pstream.write(reinterpret_cast<char*>(&(qpts[i*3])), psize);
     pstream.write(reinterpret_cast<char*>(&(fixpts[closest[i]*3])), psize);
     #ifdef EXHAUSTIVE
     int close2 = g->exhaustive_query(q[i]);
     if (close2 != closest[i]) {
-      cout << "ERROR: " << closest[i] << " != " << close2 << endl;
+      cout << "ERROR: (" << i << ") " << closest[i] << " != " << close2 << endl;
     }
     #endif
   }
 
-  const double time_query = Print_Time("Querying points");
+  const double time_query = timer("Querying points");
   const double tf = 1e6 * (time_fixed + time_copy) / nfixpts;
   const double tq = 1e6 * time_query / nqpts;
 
@@ -123,7 +130,7 @@ int main(const int argc, const char* argv[]) {
   #ifdef TIMING
   cout << fixed << setprecision(6);
   cout << nfixpts << "\t" << time_init << "\t" << (time_copy + time_fixed) <<
-    "\t" << time_query << "\t" << tf << "\t" << tq << "\t" << total_time << endl;
+    "\t" << time_query << "\t" << tf << "\t" << tq << "\t" << timer.total_time << endl;
   #endif
   #ifndef TIMING
   TABLE(4);
@@ -136,7 +143,7 @@ int main(const int argc, const char* argv[]) {
   TABLER(20, "query time") << TABLEC(10, time_query) << " (s)" << endl;
   TABLER(20, "time per fixed point") << TABLEC(10, tf) << " (us)" << endl;
   TABLER(20, "time per query point") << TABLEC(10, tq) << " (us)" << endl;
-  TABLER(20, "total time") << TABLEC(10, total_time) << " (s)" << endl;
+  TABLER(20, "total time") << TABLEC(10, timer.total_time) << " (s)" << endl;
   #endif
   
   return 0;

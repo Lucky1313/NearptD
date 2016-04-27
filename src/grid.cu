@@ -262,10 +262,17 @@ namespace nearpt3 {
       }
       int close2 = -1;
       double d2 = -1;
+      
+      short int coords[Dim];
+
       // for (Coord_T x=locell[0]; x<=hicell[0]; ++x) {
+      //   coords[0] = x;
       //   for (Coord_T y=locell[1]; y<=hicell[1]; ++y) {
+      //     coords[1] = y;
       //     for (Coord_T z=locell[2]; z<=hicell[2]; ++z) {
-      //       queryint = query_cell.point_to_id.cell_to_id(Cell<Dim>(x, y, z));
+      //       coords[2] = z;
+      //       printf("%d, %d, %d\n", coords[0], coords[1], coords[2]);
+      //       queryint = query_cell.point_to_id.cell_to_id(Cell<Dim>(coords));
       //       query_cell(queryint, q, close2, d2);
       //       if (close2 != -1 && (d2 < dist2 || (d2 == dist2 && close2 < closestpt))) {
       //         closestpt = close2;
@@ -275,39 +282,48 @@ namespace nearpt3 {
       //   }
       // }
       
-      // Nested loop traversal, modified from this code:
-      // http://stackoverflow.com/questions/18732974/c-dynamic-number-of-nested-for-loops-without-recursion
-      short int coords[Dim];
-      size_t index = 0;
+      
+      size_t index = Dim-1;
 
-      // While loop causes major slowdown, precompute number of iterations
+      //While loop causes major slowdown, precompute number of iterations
       int itrs = 1;
       for (size_t i=0; i<Dim; ++i) {
         coords[i] = locell[i];
         itrs *= (hicell[i] - locell[i] + 1);
       }
+      //printf("%d, %f\n", closestpt, dist2);
       for (int i=0; i<itrs; ++i) {
+        //printf("start %lu, %lu\n", index, Dim-1);
+        //printf("start %d, %d, %d\n", coords[0], coords[1], coords[2]);
         queryint = query_cell.point_to_id.cell_to_id(Cell<Dim>(coords));
         query_cell(queryint, q, close2, d2);
+        //printf("%d, %f\n", close2, d2);
         if (close2 != -1 && (d2 < dist2 || (d2 == dist2 && close2 < closestpt))) {
           closestpt = close2;
           dist2 = d2;
+          //printf("new\n");
         }
-        coords[0]++;
+        //printf("b %d", (int)(coords[Dim-1]));
+        coords[Dim-1]++;
+        //printf(", %d\n", (int)(coords[Dim-1]));
+        //printf("b %d, %d, %d\n", coords[0], coords[1], coords[2]);
 
-        while (coords[index] == hicell[index]) {
-          if (index != Dim - 1) {
+        while (coords[index] > hicell[index]) {
+          //printf("c %lu, %d, %d\n", index, coords[index], hicell[index]);
+          if (index != 0) {
             coords[index] = locell[index];
-            index++;
+            index--;
             coords[index]++;
+            //printf("d %lu, %d\n", index, coords[index]);
           }
+          //printf("c %d, %d, %d\n", coords[0], coords[1], coords[2]);
           else {
             break;
           }
         }
-        index = 0;
+        index = Dim-1;
       }
-
+      //printf("%d, %f\n", closestpt, dist2);
       return closestpt;
     }
   };
@@ -385,6 +401,7 @@ namespace nearpt3 {
       bool found(false);
 
       for (int isort=0; isort<nstop; ++isort) {
+        //printf("%d\n", isort);
         int close2;
         double d2;
         const Cell<Dim> s(point_at(isort));
@@ -417,7 +434,7 @@ namespace nearpt3 {
             //   if (s[0]==s[2]) continue;
             //   break;
             // }
-            if (iperm > 0 && (s[iperm % Dim] == s[(iperm-1) % Dim])) continue;
+            //if (iperm > 0 && (s[iperm % Dim] == s[(iperm-1) % Dim])) printf("skip1\n");//continue;
             
             Cell<Dim> s3;
             //(s2[perms[iperm][0]], s2[perms[iperm][1]], s2[perms[iperm][2]]);
@@ -429,6 +446,12 @@ namespace nearpt3 {
             if (!check_cell(c2)) continue;
             int cell_id(query_cell.point_to_id.cell_to_id(c2));
             query_cell(cell_id, q, close2, d2);
+            // printf("s(%d, %d, %d)\n", s[0], s[1], s[2]);
+            // if (iperm > 0) printf("%d/%d\n", s[iperm % Dim], s[(iperm - 1) % Dim]);
+            // printf("s2(%d, %d, %d)\n", s2[0], s2[1], s2[2]);
+            // printf("p(%d, %d, %d)\n", s3[0], s3[1], s3[2]);
+            // printf("c(%d, %d, %d)\n", c2[0], c2[1], c2[2]);
+            // printf("%d, %d, %d, %f\n", isign, iperm, close2, d2);
             if (close2 < 0) continue;
 
             if (dist2 == -1 || d2 < dist2 || (d2 == dist2 && close2 < closestpt)) {

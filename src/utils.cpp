@@ -6,6 +6,7 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
+#include <time.h>
 
 #include <thrust/host_vector.h>
 
@@ -18,46 +19,43 @@ using namespace std;
 #define TABLER(width, arg) cout << left << setw(width) << (arg) << ":"
 #define TABLEC(width, arg) right << setw(width) << (arg)
 
+struct Timer {
+  double total_time;
+  timespec* times[2];
+  int i;
 
-float clocks_per_sec = -1.0;	// will be set later.
-double total_time;
+  Timer() {
+    total_time = 0.0;
+    i=0;
+    times[0] = new timespec;
+    times[1] = new timespec;
+    get_time();
+  }
+  
+  void get_time() {
+    clock_gettime(CLOCK_REALTIME, times[i]);
+    i = (i ? 0 : 1);
+  }
+  
+  double delta_time() {
+    get_time();
+    timespec* new_time = times[(i ? 0 : 1)];
+    timespec* prev_time = times[i];
+    double delta = (new_time->tv_sec - prev_time->tv_sec) +
+      (new_time->tv_nsec - prev_time->tv_nsec) / 1.0e9;
+    total_time += delta;
+    return delta;
+  }
 
-// GET_PROCESS_CPU_TIME Return CPU (user+system) time since start of process.
-
-double Get_Process_CPU_Time ()
-{
-  struct tms *time_buffer = new tms;
-  (void) times (time_buffer);
-
-  if (clocks_per_sec<0.0) clocks_per_sec = sysconf (_SC_CLK_TCK);
-  return ((time_buffer->tms_utime + time_buffer->tms_stime) / clocks_per_sec);
-}
-
-
-//  GET_DELTA_TIME Returns time in seconds since last Get_Delta_Time.  Automatically initializes
-//  itself on 1st call and returns 0.  Also, return time from process start in its arg.
-
-double Get_Delta_Time (double &new_time)
-{
-  static double old_time = 0.0;
-  double  delta;
-
-  new_time = Get_Process_CPU_Time ();
-  delta = new_time - old_time;
-  old_time = new_time;
-  return delta;
-}
-
-
-// PRINT_TIME Print time since last call, with a message.  Then return the incremental time.
-
-double Print_Time (string msg)
-{
-  double  incrtime = Get_Delta_Time (total_time);
-  //cout << "\n.....Total CPU Time thru " << msg << " = " << total_time << ", increment="
-  //     << incrtime << '\n' << endl;
-  return incrtime;
-}
+  double operator()(string msg) {
+    double delta = delta_time();
+    #ifdef DEBUG
+    cout << "Total time through " << msg << " = " << total_time << ", delta="
+         << delta << endl;
+    #endif
+    return delta;
+  }
+};
 
 template <typename Coord_T>
 int read_points(const char* filename, const int csize, const int dim, thrust::host_vector<Coord_T>* pts) {

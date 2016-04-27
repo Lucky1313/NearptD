@@ -35,15 +35,15 @@ namespace nearpt3 {
   // cellsearchorder:
   // First 3 elements of each row:  the order in which to search (one 48th-ant of the) cells adjacent to the current cell.
   // 4th element:   where, in cellsearchorder, to stop searching after the first point is found.
-  const int cellsearchorder[] = {
-#include "cellsearchorder"
-  };
-  // Number of cells in cellsearchorder (before expanding symmetries).
-  const int ncellsearchorder = 
-    sizeof(nearpt3::cellsearchorder) / sizeof(nearpt3::cellsearchorder[0])/4;
+  // const int cellsearchorder[] = {
+// #include "cellsearchorder"
+//   };
+//   // Number of cells in cellsearchorder (before expanding symmetries).
+//   const int ncellsearchorder = 
+//     sizeof(nearpt3::cellsearchorder) / sizeof(nearpt3::cellsearchorder[0])/4;
 
   // Process all fixed points into a uniform grid
-  template<typename Coord_T, int Dim>
+  template<typename Coord_T, size_t Dim>
   Grid_T<Coord_T, Dim>*
   Preprocess(const int nfixpts, Point_Vector<Coord_T, Dim>* pts) {
     // Typedefs derived from Grid class
@@ -64,9 +64,9 @@ namespace nearpt3 {
     g->pts = pts;
 
     // Ensure monotonic cell search order
-    for (int i=1; i<ncellsearchorder; ++i)
-      if (nearpt3::cellsearchorder[(i-1)*4+3] > nearpt3::cellsearchorder[i*4+3]) 
-        throw "cellsearchorder is not monotonic";
+    // for (int i=1; i<ncellsearchorder; ++i)
+    //   if (nearpt3::cellsearchorder[(i-1)*4+3] > nearpt3::cellsearchorder[i*4+3]) 
+    //     throw "cellsearchorder is not monotonic";
 
     // Get min and max of data range
     thrust::pair<Coord_Tuple, Coord_Tuple> minmax = pts->minmax();
