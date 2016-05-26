@@ -3,7 +3,7 @@
 #include <thrust/tuple.h>
 #include <thrust/functional.h>
 
-namespace nearpt3 {
+namespace nearptd {
 
   // Typedef for tuple of size N and type T
   template<typename T, size_t N>
@@ -117,6 +117,7 @@ namespace nearpt3 {
     }
   };
 
+  // Apply function across a tuple of T1s, returning a new tuple of T2s
   template<typename T1, typename T2, typename UnFunc, size_t N>
   struct tuple_unary_apply {};
 
@@ -147,6 +148,7 @@ namespace nearpt3 {
   
   template<typename T1, typename T2, typename UnFunc>
   struct tuple_unary_apply<T1, T2, UnFunc, 4> {
+    __host__ __device__
     T2 operator()(const T1&a, UnFunc func) {
       return thrust::make_tuple(func(thrust::get<0>(a)),func(thrust::get<1>(a)),
                                 func(thrust::get<2>(a)),func(thrust::get<3>(a)));
@@ -206,21 +208,23 @@ namespace nearpt3 {
                                 func(thrust::get<8>(a)));
     }
   };
-  
+
+  // Apply function across two tuples of T1s and T2s, returning a tuple of T3s
   template<typename T1, typename T2, typename T3, typename BinFunc, size_t N>
   struct tuple_binary_apply {};
   
   template<typename T1, typename T2, typename T3, typename BinFunc>
   struct tuple_binary_apply<T1, T2, T3, BinFunc, 1> {
     __host__ __device__
-    T3 operator()(const T1& a, const T2& b, BinFunc func) {
+    T3 operator()(const T1& a, const T2& b, BinFunc func) const {
       return thrust::make_tuple(func(thrust::get<0>(a), thrust::get<0>(b)));
     }
   };
   
   template<typename T1, typename T2, typename T3, typename BinFunc>
   struct tuple_binary_apply<T1, T2, T3, BinFunc, 2> {
-    T3 operator()(const T1&a, const T2& b, BinFunc func) {
+    __host__ __device__
+    T3 operator()(const T1&a, const T2& b, BinFunc func) const {
       return thrust::make_tuple(func(thrust::get<0>(a), thrust::get<0>(b)),
                                 func(thrust::get<1>(a), thrust::get<1>(b)));
     }
@@ -239,7 +243,7 @@ namespace nearpt3 {
   template<typename T1, typename T2, typename T3, typename BinFunc>
   struct tuple_binary_apply<T1, T2, T3, BinFunc, 4> {
     __host__ __device__
-    T3 operator()(const T1&a, const T2& b, BinFunc func) {
+    T3 operator()(const T1&a, const T2& b, BinFunc func) const {
       return thrust::make_tuple(func(thrust::get<0>(a), thrust::get<0>(b)),
                                 func(thrust::get<1>(a), thrust::get<1>(b)),
                                 func(thrust::get<2>(a), thrust::get<2>(b)),
@@ -250,7 +254,7 @@ namespace nearpt3 {
   template<typename T1, typename T2, typename T3, typename BinFunc>
   struct tuple_binary_apply<T1, T2, T3, BinFunc, 5> {
     __host__ __device__
-    T3 operator()(const T1&a, const T2& b, BinFunc func) {
+    T3 operator()(const T1&a, const T2& b, BinFunc func) const {
       return thrust::make_tuple(func(thrust::get<0>(a), thrust::get<0>(b)),
                                 func(thrust::get<1>(a), thrust::get<1>(b)),
                                 func(thrust::get<2>(a), thrust::get<2>(b)),
@@ -262,7 +266,7 @@ namespace nearpt3 {
   template<typename T1, typename T2, typename T3, typename BinFunc>
   struct tuple_binary_apply<T1, T2, T3, BinFunc, 6> {
     __host__ __device__
-    T3 operator()(const T1&a, const T2& b, BinFunc func) {
+    T3 operator()(const T1&a, const T2& b, BinFunc func) const {
       return thrust::make_tuple(func(thrust::get<0>(a), thrust::get<0>(b)),
                                 func(thrust::get<1>(a), thrust::get<1>(b)),
                                 func(thrust::get<2>(a), thrust::get<2>(b)),
@@ -275,7 +279,7 @@ namespace nearpt3 {
   template<typename T1, typename T2, typename T3, typename BinFunc>
   struct tuple_binary_apply<T1, T2, T3, BinFunc, 7> {
     __host__ __device__
-    T3 operator()(const T1&a, const T2& b, BinFunc func) {
+    T3 operator()(const T1&a, const T2& b, BinFunc func) const {
       return thrust::make_tuple(func(thrust::get<0>(a), thrust::get<0>(b)),
                                 func(thrust::get<1>(a), thrust::get<1>(b)),
                                 func(thrust::get<2>(a), thrust::get<2>(b)),
@@ -289,7 +293,7 @@ namespace nearpt3 {
   template<typename T1, typename T2, typename T3, typename BinFunc>
   struct tuple_binary_apply<T1, T2, T3, BinFunc, 8> {
     __host__ __device__
-    T3 operator()(const T1&a, const T2& b, BinFunc func) {
+    T3 operator()(const T1&a, const T2& b, BinFunc func) const {
       return thrust::make_tuple(func(thrust::get<0>(a), thrust::get<0>(b)),
                                 func(thrust::get<1>(a), thrust::get<1>(b)),
                                 func(thrust::get<2>(a), thrust::get<2>(b)),
@@ -304,7 +308,7 @@ namespace nearpt3 {
   template<typename T1, typename T2, typename T3, typename BinFunc>
   struct tuple_binary_apply<T1, T2, T3, BinFunc, 9> {
     __host__ __device__
-    T3 operator()(const T1&a, const T2& b, BinFunc func) {
+    T3 operator()(const T1&a, const T2& b, BinFunc func) const {
       return thrust::make_tuple(func(thrust::get<0>(a), thrust::get<0>(b)),
                                 func(thrust::get<1>(a), thrust::get<1>(b)),
                                 func(thrust::get<2>(a), thrust::get<2>(b)),
@@ -317,6 +321,7 @@ namespace nearpt3 {
     }
   };
 
+  // Apply function across a tuple of T1s as a reduction, returning a single T2 value
   template<typename T1, typename T2, typename Function, size_t N>
   struct tuple_reduce {
     __host__ __device__
@@ -330,7 +335,7 @@ namespace nearpt3 {
   struct tuple_reduce<T1, T2, Function, 1> {
     __host__ __device__
     T2 operator()(const T1& a, Function func) {
-      return thrust::get<0>(a);
+      return static_cast<T2>(thrust::get<0>(a));
     }
   };  
 };

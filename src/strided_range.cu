@@ -5,7 +5,7 @@
 #include <thrust/iterator/permutation_iterator.h>
 #include <thrust/functional.h>
 
-namespace nearpt3 {
+namespace nearptd {
   
   // From thrust example code
   template <typename Iterator>

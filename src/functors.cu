@@ -1,5 +1,8 @@
 #pragma once
 
+#include <sstream>
+#include <string>
+
 #include <thrust/tuple.h>
 #include <thrust/functional.h>
 #include <thrust/device_ptr.h>
@@ -9,15 +12,17 @@
 #include "tuple_utility.cu"
 #include "utils.cpp"
 
-namespace nearpt3 {
+namespace nearptd {
   
-  // clamp_USI     Convert to an unsigned short int while clamping
-  template<typename T> __host__ __device__
-  unsigned short int clamp_USI(T a) {
-    const T mm(static_cast<T>(USHRT_MAX));
-    return static_cast<unsigned short int>(a > mm ? mm : (a > 0 ? static_cast<unsigned short int>(a) : 0));
+  // Convert to type T1 while clamping
+  // Hard coded to unsigned short int
+  template<typename T1, typename T2> __host__ __device__
+  T1 clamp(T2 a) {
+    const T2 mm(static_cast<T2>(USHRT_MAX));
+    return static_cast<T1>(a > mm ? mm : (a > 0 ? static_cast<T1>(a) : 0));
   }
 
+  // Return true if greater, takes in a tuple of ints
   template<typename T>
   struct greater_functor : public thrust::unary_function<T, bool>
   {
@@ -31,6 +36,7 @@ namespace nearpt3 {
     }
   };
 
+  // Return true if less
   template<typename T>
   struct less_functor: public thrust::unary_function<T, bool>
   {
@@ -43,42 +49,32 @@ namespace nearpt3 {
       return a < b;
     }
   };
-  
+
+  // Return squared difference of inputs as double
   template<typename T>
-  struct add : public thrust::unary_function<T, T>
-  {
-    const T b;
-
-    add(const T b) : b(b) {}
-
-    __host__ __device__
-    T operator()(const T& a) const {
-      return a + b;
-    }
-  };
-  
-  template<typename Coord_T>
-  struct square_difference : public thrust::binary_function<Coord_T, Coord_T, double>
+  struct square_difference : public thrust::binary_function<T, T, double>
   {
     __host__ __device__
     double square(const double t) const {return t*t;}
 
     __host__ __device__
-    double operator()(const Coord_T& a, const Coord_T& b) {
+    double operator()(const T& a, const T& b) {
       return square(a - b);
     }
   };
-  
+
+  // Calculate distance from given tuple of points to initialized poitn
   template<typename Coord_T, size_t Dim>
   struct distance2_functor : public thrust::unary_function<typename ntuple<Coord_T, Dim>::tuple, double>
   {
     typedef typename ntuple<double, Dim>::tuple Double_Tuple;
     typedef typename ntuple<Coord_T, Dim>::tuple Coord_Tuple;
     
-    const Coord_Tuple q;
     square_difference<Coord_T> square_diff;
     tuple_binary_apply<Coord_Tuple, Coord_Tuple, Double_Tuple, square_difference<Coord_T>, Dim> make_dist;
     tuple_reduce<Double_Tuple, double, thrust::plus<double>, Dim> total;
+    
+    const Coord_Tuple q;
     
     __host__ __device__
     distance2_functor(const Coord_Tuple q) : q(q) { }
@@ -90,6 +86,7 @@ namespace nearpt3 {
     }
   };
 
+  // Convert a coordinate point to a cell index point based on grid values
   template<typename Coord_T, typename Cell_Index_T>
   struct coord_to_cell_index : public thrust::binary_function<Coord_T, double, Cell_Index_T>
   {
@@ -103,6 +100,7 @@ namespace nearpt3 {
     }
   };
 
+  // Functor for getting point in array
   template<typename Coord_Ptr, typename Coord_T>
   struct get_point : public thrust::binary_function<Coord_Ptr, int, Coord_T>
   {
@@ -112,25 +110,28 @@ namespace nearpt3 {
     }
   };
 
+  // Shift a coordinate by distf, either low or high
   template<typename Coord_T>
-  struct near_cell : public thrust::unary_function<Coord_T, Coord_T>
+  struct shift_coord : public thrust::unary_function<Coord_T, Coord_T>
   {
     double distf;
     bool lohi;
+    
     __host__ __device__
-    near_cell(double distf, bool lohi) : distf(distf), lohi(lohi) {}
+    shift_coord(double distf, bool lohi) : distf(distf), lohi(lohi) {}
 
     __host__ __device__
     Coord_T operator()(const Coord_T& a)  {
       if (lohi) {
-        return clamp_USI(static_cast<double>(a) - distf);
+        return clamp<Coord_T>(static_cast<double>(a) - distf);
       }
       else {
-        return clamp_USI(static_cast<double>(a) + distf + 1.0);
+        return clamp<Coord_T>(static_cast<double>(a) + distf + 1.0);
       }
     }
   };
 
+  // Calculate scale for number of cells
   template<typename Coord_T>
   struct scale : public thrust::binary_function<Coord_T, Coord_T, double> {
     const int ng;
@@ -142,6 +143,7 @@ namespace nearpt3 {
     }
   };
 
+  // Calculate dimension of a cell
   template<typename Coord_T>
   struct cell_dim : public thrust::binary_function<Coord_T, Coord_T, double> {
     const int ng;
@@ -151,176 +153,6 @@ namespace nearpt3 {
     __host__ __device__
     double operator()(const Coord_T& lo, const Coord_T& hi) {
       return 0.5 * ((ng - 1) - r_cell * (lo + hi));
-    }
-  };
-
-  // Construct array of permutations of signs
-  template<size_t N>
-  struct sign {
-    int s[1<<N][N];
-    sign() {
-      for (int i=0; i<(1<<N); ++i) {
-        for (int j=0; j<N; ++j) {
-          s[i][j] = ((i >> j) & (0x01)) ? -1 : 1;
-        }
-      } 
-    }
-    __host__ __device__
-    int* operator[](const int& i) {
-      return s[i];
-    }
-  };
-
-  // Calculate factorial at compile time
-  template<size_t N>
-  struct factorial {
-    enum {value = N * factorial<N-1>::value};
-  };
-
-  template<>
-  struct factorial<0> {
-    enum {value = 1};
-  };
-
-  // Construct array of permutation of indices
-  // using Heap's algorithm for iterative permutation
-  template<size_t N>
-  struct perm {
-    int p[factorial<N>::value][N];
-    perm() {
-      int id[N];
-      int c = 1;
-      int i = 1;
-      for (int j=0; j<N; ++j) {
-        p[0][j] = j;
-        id[j] = 0;
-      }
-      while (i < N) {
-        if (id[i] < i) {
-          int s = i % 2 * id[i];
-          p[c][i] = p[c-1][s];
-          p[c][s] = p[c-1][i];
-          for (int j=0; j<N; ++j) {
-            if (j!=i && j!=s) p[c][j] = p[c-1][j];
-          }
-          id[i]++;
-          i=1;
-          c++;
-        }
-        else {
-          id[i] = 0;
-          ++i;
-        }
-      }
-    }
-    __host__ __device__
-    int* operator[](const int& i) {
-      return p[i];
-    }
-  };
-
-  int cell_count(int N, int dmax) {
-    if (N == 1) return dmax;
-    return ((dmax + N-1) * cell_count(N-1, dmax)) / N;
-  }
-
-
-  template<size_t Dim>
-  struct cellsearchcreate {
-    typedef typename Cell<Dim>::Cell_Index_T Cell_Index_T;
-    typedef typename ntuple<Cell_Index_T, Dim>::tuple Cell_Index_Tuple;
-    typedef typename Point_Vector<Cell_Index_T, Dim>::Coord_Tuple_Iterator Cell_Tuple_Iterator;
-    typedef typename Point_Vector<Cell_Index_T, Dim>::Coord_Ptr Coord_Ptr;
-    ntuple<Cell_Index_T, Dim> Cell_Index_Ntuple;  
-    Point_Vector<Cell_Index_T, Dim> *cells;
-    thrust::device_vector<int> stop;
-    size_t size;
-
-    cellsearchcreate() {
-      int dmax = 1;
-      while (cell_count(Dim, dmax) < 1 << 20) {dmax++;}
-      size = cell_count(Dim, dmax);
-      Cell_Index_T coords[Dim];
-      size_t index = Dim-1;
-      for (size_t i=0; i<Dim; ++i) {coords[i] = 0;}
-
-      thrust::host_vector<Cell_Index_T> arr(size*Dim);
-      for (int i=0; i<size; ++i) {
-        for (size_t j=0; j<Dim; ++j) {
-          arr[i*Dim+j] = coords[j];
-        }
-        coords[Dim-1]++;
-
-        while (coords[index] >= dmax) {
-          if (index != 0) {
-            index--;
-            coords[index]++;
-            int t=index;
-            while (t < Dim-1) {
-              coords[t+1] = coords[t];
-              t++;
-            }
-          }
-          else {
-            break;
-          }
-        }
-        index = Dim-1;
-      }
-      cells = new Point_Vector<Cell_Index_T, Dim>(size, arr);
-
-      // Cells[0] is all zeros, all distances are calculated relative to zero
-      distance2_functor<Cell_Index_T, Dim> dist2((*cells)[0]);
-      thrust::device_vector<double> dists(size, 0);
-      thrust::transform(cells->begin(), cells->end(), dists.begin(), dist2);
-      thrust::sort_by_key(dists.begin(), dists.end(), cells->begin());
-      stop = thrust::device_vector<int>(size);
-
-      //add<Cell_Index_T> add2(2);
-      //tuple_unary_apply<Cell_Index_Tuple, Cell_Index_Tuple, add<Cell_Index_T>, Dim> add_2;
-
-      for (int i=0; i<Dim; ++i) {
-        coords[i] = -2;
-      }
-      
-      distance2_functor<Cell_Index_T, Dim> distplus2(Cell_Index_Ntuple.make_tuple(coords));
-      typedef thrust::transform_iterator<distance2_functor<Cell_Index_T, Dim>, Cell_Tuple_Iterator> dist2_itr;
-      dist2_itr begin(cells->begin(), distplus2);
-      dist2_itr end(cells->end(), distplus2);
-
-      // cout << "Dists: [";
-      // thrust::copy(dists.begin(), dists.begin()+50, ostream_iterator<double>(cout, ", "));
-      // cout << "]" << endl;
-      // cout << "Dists2: [";
-      // thrust::copy(begin, begin+50, ostream_iterator<double>(cout, ", "));
-      // cout << "]" << endl;
-      
-      thrust::upper_bound(dists.begin(), dists.end(),
-                          begin, end, stop.begin());
-
-      thrust::host_vector<int> stoph(size);
-      thrust::copy(stop.begin(), stop.end(), stoph.begin());
-      int s = 0;
-      for (int i=0; i<size; ++i) {
-        if (stoph[i] > s) {
-          s = stoph[i];
-        }
-        else {
-          stoph[i] = s;
-        }
-      }
-      thrust::copy(stoph.begin(), stoph.end(), stop.begin());
-      // thrust::adjacent_difference(stop.begin(), stop.end(),
-      //                             stop.begin(), thrust::maximum<int>());
-      
-      // int istop = 0;
-      // for (int i=0; i<size; ++i) {
-      //   const double d2 = dist2(add_2((*cells)[i], add2));
-      //   for (; istop<size; ++istop) {
-      //     if (dists[istop] > d2) break;
-      //   }
-      //   stop[i] = istop;
-      // }
     }
   };
 };

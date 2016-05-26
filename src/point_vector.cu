@@ -8,7 +8,7 @@
 #include "strided_range.cu"
 #include "tuple_utility.cu"
 
-namespace nearpt3 {
+namespace nearptd {
 
   template<typename Coord_T, size_t Dim>
   class Point_Vector {

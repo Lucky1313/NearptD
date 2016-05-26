@@ -4,7 +4,7 @@
 
 #include "tuple_utility.cu"
 
-namespace nearpt3 {
+namespace nearptd {
 
   template<size_t Dim>
   class Cell {

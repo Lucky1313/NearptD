@@ -4,8 +4,11 @@
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 
-#include "nearpt3.cu"
+#include "nearptd.cu"
 #include "utils.cpp"
+#include "timer.cpp"
+
+using namespace std;
 
 int main(const int argc, const char* argv[]) {
   typedef unsigned short int Coord_T;
@@ -18,46 +21,47 @@ int main(const int argc, const char* argv[]) {
     cerr << "Usage: ./nearpt ng_factor fixpts qpts pairs" << endl;
     exit(EXIT_FAILURE);
   }
-  nearpt3::ng_factor = atof(argv[1]);
-  if (nearpt3::ng_factor < 0.01 || nearpt3::ng_factor > 100) {
-    cerr << "Error, illegal ng_factor (" << nearpt3::ng_factor << "), set to 1." << endl;
-    nearpt3::ng_factor = 1.0;
+  nearptd::ng_factor = atof(argv[1]);
+  if (nearptd::ng_factor < 0.01 || nearptd::ng_factor > 100) {
+    cerr << "Error, illegal ng_factor (" << nearptd::ng_factor << "), set to 1." << endl;
+    nearptd::ng_factor = 1.0;
   }
   
   Timer timer = Timer();
+  #ifdef PROFILE
+  timer.print = true;
+  #endif
 
   thrust::host_vector<Coord_T> fixpts;
   thrust::host_vector<Coord_T> qpts;
   // Read fixed and query points into memory
-  const int nfixpts(read_points<Coord_T>(argv[2], csize, dim, &fixpts));
-  const int nqpts(read_points<Coord_T>(argv[3], csize, dim, &qpts));
-
-  const double time_init = timer("Initialization and reading fixed points");
-  
-  // Structure of arrays rather than Array of structures
-  nearpt3::Point_Vector<Coord_T, dim> p(nfixpts, fixpts);
-  nearpt3::Point_Vector<Coord_T, dim> q(nqpts, qpts);
-
-  const double time_copy = timer("Copying points to GPU");
-      
-  nearpt3::Grid_T<Coord_T, dim> *g = nearpt3::Preprocess<Coord_T>(nfixpts, &p);
-
-  const double time_fixed = timer("Processing fixed points");
+  const int nfixpts(read_bin_points<Coord_T, dim>(argv[2], &fixpts));
+  const int nqpts(read_bin_points<Coord_T, dim>(argv[3], &qpts));
   
   ofstream pstream(argv[4], ios::binary);
   if (!pstream) { 
     throw "ERROR: can't open output file pairs";
   }
 
-  thrust::host_vector<int> closest(nqpts, -1);
-  nearpt3::Query<Coord_T>(g, &q, &closest);
-  // cout << g->slow_query(q[8626]) << endl;
-  // cout << g->exhaustive_query(q[8626]) << endl;
+  const double time_init = timer("Initialization and reading fixed points");
+
+  // Copy points to GPU
+  nearptd::Point_Vector<Coord_T, dim> p(nfixpts, fixpts);
+  nearptd::Point_Vector<Coord_T, dim> q(nqpts, qpts);
+
+  const double time_copy = timer("Copying points to GPU");
   
-  // int close;
-  // thrust::tuple<Coord_T, Coord_T, Coord_T> q1 = q[14];
-  // nearpt3::Query<Coord_T>(g, q1, close);
-  // cout << close << "-" << g->exhaustive_query(q1) << endl;
+  // Preprocess points into grid
+  nearptd::Grid_T<Coord_T, dim> *g = nearptd::Preprocess(nfixpts, &p);
+
+  const double time_fixed = timer("Processing fixed points");
+
+  thrust::host_vector<int> closest(nqpts, -1);
+  nearptd::Query(g, &q, &closest);
+  
+  const double time_query = timer("Querying points");
+
+  // Write points to disk
   for (int i=0; i<nqpts; ++i) {
     pstream.write(reinterpret_cast<char*>(&(qpts[i*3])), psize);
     pstream.write(reinterpret_cast<char*>(&(fixpts[closest[i]*3])), psize);
@@ -69,13 +73,14 @@ int main(const int argc, const char* argv[]) {
     #endif
   }
 
-  const double time_query = timer("Querying points");
-  const double tf = 1e6 * (time_fixed + time_copy) / nfixpts;
+  const double time_write = timer("Writing points");
+  
+  const double tf = 1e6 * time_fixed / nfixpts;
   const double tq = 1e6 * time_query / nqpts;
 
   #ifdef STATS
   cout << fixed << setprecision(5);
-  cout << "ng factor: " << nearpt3::ng_factor << endl;
+  cout << "ng factor: " << nearptd::ng_factor << endl;
   cout << "ng: " << g->ng << endl;
   
   cout << "Mininum points per cell: " << g->Min_Points_Per_Cell << endl;
@@ -95,52 +100,24 @@ int main(const int argc, const char* argv[]) {
   cout << "Number of Slow Case Queries:  " << g->Num_Slow_Queries << endl;
   cout << "Number of Exhaustive Queries: " << g->Num_Exhaustive_Queries << endl;
   cout << endl;
-
-  /*
-  cout << "Total number of cells searched: " << g->Total_Cells_Searched << endl;
-  cout << "Average number of cells searched per query: " <<
-    static_cast<float>(g->Total_Cells_Searched) / static_cast<float>(nqpts) << endl;
-  cout << "Histogram of number of queries that searched a given number of cells (up to " << g->Max_Cells_Searched << "):" << endl;
-  for (int i=0; i<g->Max_Cells_Searched; ++i) {
-    if (g->Num_Cells_Searched[i] > 0) {
-      cout << i << "\t" << g->Num_Cells_Searched[i] << "\n";
-    }
-  }
-  if (g->Num_Cells_Searched[g->Max_Cells_Searched] > 0) {
-    cout << g->Max_Cells_Searched << "+\t" << g->Num_Cells_Searched[g->Max_Cells_Searched] << endl;
-  } 
-  cout << endl;
-  
-  cout << "Total number of points checked: " << g->Total_Points_Checked << endl;
-  cout << "Average number of points checked per query: " <<
-    static_cast<float>(g->Total_Points_Checked) / static_cast<float>(nqpts) << endl;
-  cout << "Histogram of number of queries that searched a given number of points (up to " << g->Max_Points_Checked << "):" << endl;
-  for (int i=0; i<g->Max_Points_Checked; ++i) {
-    if (g->Num_Points_Checked[i] > 0) {
-      cout << i << "\t" << g->Num_Points_Checked[i] << "\n";
-    }
-  }
-  if (g->Num_Points_Checked[g->Max_Points_Checked] > 0) {
-    cout << g->Max_Points_Checked << "+\t" << g->Num_Points_Checked[g->Max_Points_Checked] << endl;
-  }
-  cout << endl;
-  */
   #endif
 
   #ifdef TIMING
   cout << fixed << setprecision(6);
-  cout << nfixpts << "\t" << time_init << "\t" << (time_copy + time_fixed) <<
-    "\t" << time_query << "\t" << tf << "\t" << tq << "\t" << timer.total_time << endl;
+  cout << nfixpts << "\t" << time_init << "\t" << time_copy << "\t"
+       << time_fixed << "\t" << time_query << "\t" << time_write << "\t"
+       << tf << "\t" << tq << "\t" << timer.total_time << endl;
   #endif
   #ifndef TIMING
   TABLE(4);
   TABLER(20, "nfixpts") << TABLEC(10, nfixpts) << endl;
-  TABLER(20, "ng_factor") << TABLEC(10, nearpt3::ng_factor) << endl;
+  TABLER(20, "ng_factor") << TABLEC(10, nearptd::ng_factor) << endl;
   TABLER(20, "grid ng") << TABLEC(10, g->ng) << endl;
   TABLER(20, "init time") << TABLEC(10, time_init) << " (s)" << endl;
   TABLER(20, "copy time") << TABLEC(10, time_copy) << " (s)" << endl;
   TABLER(20, "fixed time") << TABLEC(10, time_fixed) << " (s)" << endl;
   TABLER(20, "query time") << TABLEC(10, time_query) << " (s)" << endl;
+  TABLER(20, "write time") << TABLEC(10, time_write) << " (s)" << endl;
   TABLER(20, "time per fixed point") << TABLEC(10, tf) << " (us)" << endl;
   TABLER(20, "time per query point") << TABLEC(10, tq) << " (us)" << endl;
   TABLER(20, "total time") << TABLEC(10, timer.total_time) << " (s)" << endl;

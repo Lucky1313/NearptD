@@ -33,7 +33,6 @@ using boost::array;
 
 typedef array<unsigned short int,3> Pt_T;
 Pt_T p;
-const int nq(10);  // Desired number of output query points.
 
 float fp[3];
 
@@ -45,16 +44,24 @@ unsigned short int conv(const float f) {
   return static_cast<unsigned short int>(i);
 }
 
-int main() {
+int main(const int argc, const char* argv[]) {
+
+  if (argc < 5) {
+    cerr << "Incorrect number of arguments" << endl;
+    exit(1);
+  }
+  
   int np(0);   // Number of input points
   int iq(0);   // Number of query points found so far.
+  
+  const int nq(atoi(argv[1]));  // Desired number of output query points.
 
   const int sp = sizeof(p);
   cerr << PRINTN(sp);
 
   {
     FILE *sin;
-    sin = fopen64("points","r");
+    sin = fopen64(argv[2],"r");
     cerr << "Reading points the 1st time: ";
     if (!sin) {perror("fopen failed the first time");exit(1);}
     for (;;) {
@@ -69,15 +76,15 @@ int main() {
   }
   {
     FILE *sin;
-    sin = fopen64("points","r");
+    sin = fopen64(argv[2],"r");
     cerr << "Reading points the 2nd time: ";
     if (!sin) {perror("fopen failed the 2nd time");exit(1);}
-    ofstream fstream("fixpts",ios::binary);   // ios::binary unnecessary in linux.
+    ofstream fstream(argv[3],ios::binary);   // ios::binary unnecessary in linux.
     if (!fstream) { 
       cout << "ERROR: can't open file fixpts" << endl;
       exit(1);
     }
-    ofstream qstream("qpts",ios::binary);
+    ofstream qstream(argv[4],ios::binary);
     if (!qstream) { 
       cout << "ERROR: can't open file qpts" << endl;
       exit(1);
